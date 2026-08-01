@@ -1,8 +1,4 @@
-"""Command-line entry point: `python -m seren_countfirst.run_pipeline <stage>`.
-
-Stages after `fit` take no arguments, so several may be listed and run in
-sequence. `fit` consumes the rest of the line as rung names and runs alone.
-"""
+"""Command-line entry point: `python -m seren_countfirst.run_pipeline <stage>`."""
 from __future__ import annotations
 
 import sys
@@ -19,6 +15,7 @@ USAGE = """usage: python -m seren_countfirst.run_pipeline <stage> [<stage> ...]
     horizon                   horizon distributions and scale support
     reconstruct               counts -> batch timestamps -> job arrivals
     baselines                 the bootstrap yardstick
+    jobsize                   durations -> work units, and the law fitted to them
     export                    freeze the winner into the model card
 
 Paths come from paths.py and are overridable by SEREN_TRACE_CSV,

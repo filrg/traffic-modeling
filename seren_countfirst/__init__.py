@@ -1,12 +1,4 @@
-"""Count-first workload generator for the Seren SFT trace.
-
-Pipeline (guide eq. 1):
-    SFT submissions -> exact-timestamp batches -> regular batch-count series
-    -> dynamic count model -> batch timestamps -> batch sizes -> job arrivals
-
-Default configuration: no calendar, no residual layer, no conditional marks.
-Each is an ablation that must earn its place on a contiguous holdout.
-"""
+"""Count-first workload generator for the Seren SFT trace."""
 from .data import (
     ActivityScheme,
     BASE_BIN_S,
@@ -55,12 +47,28 @@ from .bootstrap import (
     bootstrap_metric_envelope,
     scale_matched_idc_envelope,
 )
+from .jobsize import (
+    EmpiricalJobSize,
+    F_MAX,
+    LogNormalMixture,
+    SCIPY_CANDIDATES,
+    ScipyJobSize,
+    fit_jobsize,
+    jobsize_table,
+    read_jobsize_model,
+    roundtrip_error_s,
+    step_time_s,
+    work_units,
+    write_jobsize_model,
+)
 from .models import (
     CalendarTerm,
     CountModel,
     IIDNegBin,
+    NBINGARCH,
     NBLatentAR,
     NBRegimeSwitch,
+    ONOFFCounts,
     marginal_feasibility,
     nb2_sample,
 )
@@ -128,6 +136,19 @@ __all__ = [
     "theoretical_idc_two_ar",
     "wavelet_variance",
     "z_table",
+    # job size
+    "EmpiricalJobSize",
+    "F_MAX",
+    "LogNormalMixture",
+    "SCIPY_CANDIDATES",
+    "ScipyJobSize",
+    "fit_jobsize",
+    "jobsize_table",
+    "read_jobsize_model",
+    "roundtrip_error_s",
+    "step_time_s",
+    "work_units",
+    "write_jobsize_model",
     # bootstrap
     "BOOTSTRAPS",
     "bootstrap_baseline_table",
@@ -138,8 +159,10 @@ __all__ = [
     "CountModel",
     "IIDNegBin",
     "NBGatedLatent",
+    "NBINGARCH",
     "NBLatentAR",
     "NBRegimeSwitch",
+    "ONOFFCounts",
     "marginal_feasibility",
     "nb2_sample",
     "quiet_run_vs_geometric",

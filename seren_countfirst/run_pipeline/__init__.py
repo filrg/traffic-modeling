@@ -19,10 +19,11 @@ from .stages.evaluate import stage_evaluate
 from .stages.export import stage_export
 from .stages.fit import stage_fit
 from .stages.horizon import stage_horizon
+from .stages.jobsize import stage_jobsize
 from .stages.reconstruct import stage_reconstruct
 from .stages.scaling import stage_scaling
 
-#: stage name -> callable taking the remaining CLI arguments
+# stage name -> callable taking the remaining CLI arguments
 STAGES = {
     "data": lambda args: stage_data(),
     "fit": stage_fit,
@@ -31,6 +32,7 @@ STAGES = {
     "horizon": lambda args: stage_horizon(),
     "reconstruct": lambda args: stage_reconstruct(),
     "baselines": lambda args: stage_baselines(),
+    "jobsize": lambda args: stage_jobsize(),
     "export": lambda args: stage_export(),
 }
 
@@ -54,6 +56,7 @@ __all__ = [
     "stage_export",
     "stage_fit",
     "stage_horizon",
+    "stage_jobsize",
     "stage_reconstruct",
     "stage_scaling",
 ]
