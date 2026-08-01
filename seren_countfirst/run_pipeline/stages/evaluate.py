@@ -16,11 +16,12 @@ from ...paths import RESULTS
 from ..config import FOLD_KWARGS, N_PATHS_EVAL, N_PATHS_FOLD, SEED
 from ..state import _load, _models, _save
 
+
 def _select_winner(results: list[dict]) -> str:
-    """Most structural gates passed, ties broken by the lowest IDC discrepancy.
+    """Return the key of the candidate passing the most gates, ties broken by D_IDC.
 
     `evaluate_gates` stops at the first failure, so the number of passed
-    results is exactly how far a candidate got up the sequential ladder.
+    results is how far a candidate got up the sequential ladder.
     """
     def rank(res: dict) -> tuple:
         passed = sum(g.passed for g in res["gates"].results)
@@ -40,18 +41,23 @@ def stage_evaluate() -> None:
     folds = expanding_window_folds(state["counts"], **FOLD_KWARGS)
     print(f"gate 7 folds: {[f.name for f in folds]} "
           f"(validation {FOLD_KWARGS['validation_days']:.0f}d each)")
-    results, marg_rows = [], [dict(model="TRACE", **state["trace_marginals"], gates="-", first_fail="-")]
+    results, marg_rows = [], [dict(model="TRACE", role="-", **state["trace_marginals"],
+                                   gates="-", first_fail="-")]
     for name, model in models.items():
-        # guide gate 9: one global scalar rate calibration (intercept shift), reported openly
+        # the single global scalar rate calibration, applied as an intercept shift
         cal = state["trace_marginals"]["mean"] / float(model.params_["mean"])
+        # candidates are graded sequentially; benchmarks and ablations are scored
+        # on every gate, to record where an alternative mechanism breaks
+        role = getattr(model, "role", "candidate")
         res = evaluate_candidate(model, n, thr, env, n_paths=N_PATHS_EVAL, seed=SEED + 1,
                                  fold_n_paths=N_PATHS_FOLD, folds=folds,
-                                 idc_envelope=state.get("idc_envelope"), alpha=cal)
+                                 idc_envelope=state.get("idc_envelope"),
+                                 stop_at_first_failure=(role == "candidate"), alpha=cal)
         res["key"] = name
         results.append(res)
         stats = pd.DataFrame([base_marginals(p) for p in res["paths"]]).mean().to_dict()
         gr = res["gates"]
-        marg_rows.append(dict(model=name, rate_cal=round(cal, 3), **stats,
+        marg_rows.append(dict(model=name, role=role, rate_cal=round(cal, 3), **stats,
                               gates="PASS" if gr.passed else "FAIL",
                               first_fail=(gr.first_failure.name if gr.first_failure else "-")))
         gr.to_frame().to_csv(RESULTS / f"gates_{name}.csv", index=False)

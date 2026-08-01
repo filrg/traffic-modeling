@@ -1,8 +1,4 @@
-"""The model ladder: rungs 2-4b, plus the regime-switch benchmark.
-
-Fitting is MAP for the latent path with a Laplace approximation for the
-marginal likelihood.
-"""
+"""The model ladder: rungs 2-4b, plus the benchmark rows it is read against."""
 from .ar1 import (
     ar1_logdet_precision,
     ar1_path,
@@ -15,8 +11,10 @@ from .base import CalendarTerm, CountModel, FitReport
 from .feasibility import marginal_feasibility
 from .gated import NBGatedLatent
 from .iid import IIDNegBin
+from .ingarch import NBINGARCH
 from .latent_ar import NBLatentAR
 from .nb import nb2_info_eta, nb2_loglik, nb2_sample, nb2_score_eta
+from .onoff import ONOFFCounts
 from .regime import NBRegimeSwitch
 
 __all__ = [
@@ -25,8 +23,10 @@ __all__ = [
     "FitReport",
     "IIDNegBin",
     "NBGatedLatent",
+    "NBINGARCH",
     "NBLatentAR",
     "NBRegimeSwitch",
+    "ONOFFCounts",
     "ar1_logdet_precision",
     "ar1_path",
     "ar1_precision",

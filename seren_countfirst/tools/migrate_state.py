@@ -1,14 +1,4 @@
-"""One-time migration: state.pkl (pandas 3.x) -> version-neutral artifacts.
-
-Run ONCE in a throwaway pandas 3 environment:
-
-    python -m venv /tmp/p3 && /tmp/p3/bin/pip install -q "pandas>=3" numpy scipy
-    /tmp/p3/bin/python -m seren_countfirst.tools.migrate_state
-
-Writes results/state_portable/ (npy + csv + json), readable by any pandas.
-After this, use `load_portable_state()` from your normal environment; the
-pickle is no longer needed.
-"""
+"""Version-neutral pipeline state as npy + csv + json, and the one-time pickle migration."""
 from __future__ import annotations
 
 import json
@@ -22,10 +12,10 @@ from ..paths import RESULTS, STATE_DIR
 
 OUT = STATE_DIR
 
-#: sections whose index carries meaning and must survive the round trip
+# sections whose index carries meaning and must survive the round trip
 _INDEXED_TABLES = ("envelope", "idc_envelope")
-#: sections with a throwaway RangeIndex. A section absent from these lists is
-#: silently dropped on save, so anything a stage puts in `state` belongs here.
+# sections with a throwaway RangeIndex. A section absent from both lists is
+# dropped on save, so anything a stage puts in `state` must be listed here.
 _FLAT_TABLES = ("scaling", "horizon", "horizon_scale_support", "bootstrap_baselines",
                 "microstructure", "reconstruction_by_alpha")
 _META_SCALARS = ("trace_sha256", "n_bins", "busy_threshold", "winner", "trace_marginals", "trace_idc")
@@ -40,28 +30,28 @@ def _jsonable(v):
 
 
 def migrate(state_path: Path = RESULTS / "state.pkl", out: Path = OUT) -> None:
+    """Convert a legacy state.pkl into the portable layout. Requires pandas 3.x."""
     state = pickle.load(state_path.open("rb"))
     out.mkdir(parents=True, exist_ok=True)
 
-    # 1. count series -> npy + plain ISO index
+    # count series -> npy + plain ISO index
     counts = state["counts"]
     np.save(out / "counts.npy", np.asarray(counts.values, dtype=float))
     pd.Series(counts.index.astype(str), name="timestamp").to_csv(out / "counts_index.csv", index=False)
 
-    # 2. batch layer
     np.save(out / "batch_sizes.npy", np.asarray(state["batches_sizes"], dtype=int))
     pd.Series(pd.DatetimeIndex(state["batch_times"]).astype(str), name="batch_time").to_csv(
         out / "batch_times.csv", index=False
     )
 
-    # 3. tables -> csv with a reset, string-free index
+    # tables -> csv with a reset, string-free index
     for key in ("envelope", "scaling", "horizon"):
         if key in state and isinstance(state[key], pd.DataFrame):
             df = state[key].reset_index()
             df.columns = [str(c) for c in df.columns]
             df.to_csv(out / f"{key}.csv", index=False)
 
-    # 4. models -> params json (rebuildable; no class pickling)
+    # models -> params json, rebuildable without pickling any class
     models = {
         name: {
             "class": type(m).__name__,
@@ -74,7 +64,6 @@ def migrate(state_path: Path = RESULTS / "state.pkl", out: Path = OUT) -> None:
     }
     (out / "models.json").write_text(json.dumps(models, indent=2, default=_jsonable))
 
-    # 5. scalars / dicts
     scheme = state["scheme"]
     (out / "meta.json").write_text(
         json.dumps(
@@ -97,10 +86,10 @@ def migrate(state_path: Path = RESULTS / "state.pkl", out: Path = OUT) -> None:
 
 
 def load_portable_state(out: Path = OUT) -> dict:
-    """Read the portable state back on ANY pandas version.
+    """Read the portable state back on any pandas version.
 
-    Returns an empty dict when no state has been written yet, so the first
-    pipeline stage can start from nothing.
+    Returns an empty dict when no state has been written, so the first pipeline
+    stage can start from nothing.
     """
     from ..data import ActivityScheme, CountSeries
 
@@ -138,13 +127,13 @@ def load_portable_state(out: Path = OUT) -> dict:
         if key in _INDEXED_TABLES:
             state[key] = df.set_index(df.columns[0])
         else:
-            # tolerate the throwaway index column written by the one-time migration
+            # tolerate the index column written by the one-time migration
             state[key] = df.drop(columns="index") if df.columns[0] == "index" else df
     return state
 
 
 def _model_entry(model, previous: dict | None = None) -> dict:
-    """Serialise one model; keep the recorded fit when the object was rebuilt."""
+    """Serialise one model, keeping the recorded fit when the object was rebuilt."""
     report = getattr(model, "report", None)
     fit = report.to_dict() if report is not None else None
     if fit is None and previous is not None:
@@ -153,6 +142,8 @@ def _model_entry(model, previous: dict | None = None) -> dict:
         "class": type(model).__name__,
         "name": model.name,
         "rung": _jsonable(getattr(model, "rung", None)),
+        # role must round-trip: an ablation rebuilt as a candidate could win selection
+        "role": getattr(model, "role", "candidate"),
         "params": {k: _jsonable(v) for k, v in model.params_.items()},
         "fit": fit,
     }
@@ -161,8 +152,8 @@ def _model_entry(model, previous: dict | None = None) -> dict:
 def save_portable_state(state: dict, out: Path = OUT) -> None:
     """Write `state` back to the portable layout, updating only the keys present.
 
-    Saving is incremental because the pipeline mutates one section per stage;
-    sections absent from `state` keep whatever is already on disk.
+    Saving is incremental because each stage mutates one section; sections
+    absent from `state` keep whatever is on disk.
     """
     out.mkdir(parents=True, exist_ok=True)
 
@@ -209,14 +200,14 @@ def save_portable_state(state: dict, out: Path = OUT) -> None:
 
 
 def _rebuild_report(fit: dict | None):
-    """Recreate a FitReport from its serialised form, or None if never fitted."""
+    """Recreate a FitReport from its serialised form; None if the model was never fitted."""
     from ..models import FitReport
 
     if not fit:
         return None
     n_obs = fit.get("n_obs")
     if n_obs is None:
-        # legacy entries stored only the derived criteria; invert BIC for n_obs
+        # legacy entries stored only the derived criteria: invert BIC for n_obs
         bic, ll, k = fit.get("BIC"), fit.get("loglik"), fit.get("n_params")
         n_obs = int(round(float(np.exp((bic + 2.0 * ll) / k)))) if None not in (bic, ll, k) and k else 0
     return FitReport(
@@ -232,22 +223,26 @@ def _rebuild_report(fit: dict | None):
 
 
 def rebuild_model(entry: dict):
-    """Recreate a model object from its params json (no pickle involved)."""
-    from ..models import IIDNegBin, NBLatentAR, NBRegimeSwitch
+    """Recreate a model object from its params json; no pickle is involved."""
+    from ..models import IIDNegBin, NBINGARCH, NBLatentAR, NBRegimeSwitch, ONOFFCounts
     from ..models import NBGatedLatent
 
     cls = {"IIDNegBin": IIDNegBin, "NBLatentAR": NBLatentAR,
-           "NBRegimeSwitch": NBRegimeSwitch, "NBGatedLatent": NBGatedLatent}[entry["class"]]
+           "NBRegimeSwitch": NBRegimeSwitch, "NBGatedLatent": NBGatedLatent,
+           "ONOFFCounts": ONOFFCounts, "NBINGARCH": NBINGARCH}[entry["class"]]
     if cls is NBLatentAR:
         model = cls(n_components=1 if entry["name"].startswith("nb_ar1") else 2)
     elif cls is NBGatedLatent:
         model = cls(sharpness=float(entry["params"].get("a", 4.0)))
+    elif cls is ONOFFCounts:
+        model = cls(emission="nb" if np.isfinite(entry["params"].get("kappa", np.inf)) else "poisson")
     else:
         model = cls()
     model.params_ = {
         k: (np.asarray(v) if isinstance(v, list) else v) for k, v in entry["params"].items()
     }
     model.name = entry["name"]
+    model.role = entry.get("role", type(model).role)
     model.report = _rebuild_report(entry.get("fit"))
     return model
 
