@@ -19,9 +19,11 @@ from .ar1 import (
 from .base import CalendarTerm, CountModel, FitReport
 from .nb import nb2_info_eta, nb2_loglik, nb2_sample, nb2_score_eta
 
-# rungs 3 and 4: NB with one or two latent AR(1) components
 class NBLatentAR(CountModel):
-    """log lambda_t = mu + sum_j x_t^(j) - V/2, each x^(j) a stationary AR(1)."""
+    """NB counts over a sum of stationary AR(1) latents.
+
+    `log lambda_t = mu + sum_j x_t^(j) - V/2`, with V the total latent variance.
+    """
 
     def __init__(self, n_components: int = 2, calendar: Optional[CalendarTerm] = None) -> None:
         super().__init__()
@@ -33,7 +35,6 @@ class NBLatentAR(CountModel):
         self.rung = 3 if n_components == 1 else 4
         self.latent_mode_: Optional[np.ndarray] = None
 
-    # internal: mode finding and Laplace evidence
     def _unpack(self, theta: np.ndarray) -> Tuple[float, np.ndarray, np.ndarray, float]:
         if self.n_components == 1:
             mu, log_sigma, log_tau, log_kappa = theta
@@ -43,7 +44,7 @@ class NBLatentAR(CountModel):
             mu, log_s_slow, log_s_fast, log_tau_fast, log_gap, log_kappa = theta
             sigma = np.array([np.exp(log_s_slow), np.exp(log_s_fast)])
             tau_fast = np.exp(log_tau_fast)
-            tau = np.array([tau_fast + np.exp(log_gap), tau_fast])  # ordering is identified by construction
+            tau = np.array([tau_fast + np.exp(log_gap), tau_fast])  # gap parameterisation identifies the order
         return float(mu), sigma, tau, float(np.exp(np.clip(log_kappa, -20, 20)))
 
     def _eta(self, mu: float, sigma: np.ndarray, x: np.ndarray, offset: np.ndarray | None) -> np.ndarray:
@@ -127,13 +128,12 @@ class NBLatentAR(CountModel):
         ll = joint_at_mode + 0.5 * logdet_Q - 0.5 * logdet_H
         return float(ll), x_hat, gnorm
 
-    # moment initialiser
     def moment_start(self, n: np.ndarray, max_lag: int = 240) -> np.ndarray:
-        """Method-of-moments start from the guide's own eq. (29)-(31).
+        """Return a method-of-moments starting point read off the empirical ACF.
 
         The count autocovariance is gamma_h = m^2 (e^{C_h} - 1) with
         C_h = sum_j sigma_j^2 phi_j^h, so the latent variances and half-lives
-        can be read off the empirical ACF before a single Laplace evaluation.
+        follow without evaluating the Laplace likelihood.
         """
         from scipy.optimize import least_squares
 
@@ -160,7 +160,7 @@ class NBLatentAR(CountModel):
             def resid(p):
                 a_s, a_f = np.exp(p[0]), np.exp(p[1])
                 phi_f = 1.0 / (1.0 + np.exp(-p[2]))
-                phi_s = phi_f + (1.0 - phi_f) / (1.0 + np.exp(-p[3]))  # keeps phi_s > phi_f
+                phi_s = phi_f + (1.0 - phi_f) / (1.0 + np.exp(-p[3]))  # enforces phi_s > phi_f
                 return w[ok] * (a_s * phi_s ** lags[ok] + a_f * phi_f ** lags[ok] - C_hat[ok])
             c0 = float(C_hat[ok][0]) if ok.any() else 0.5
             sol = least_squares(resid, [np.log(max(0.5 * c0, 1e-3)), np.log(max(0.5 * c0, 1e-3)), 0.0, 1.5],
@@ -184,7 +184,6 @@ class NBLatentAR(CountModel):
         return np.array([np.log(m), 0.5 * np.log(a[0]), 0.5 * np.log(a[1]),
                          np.log(max(tau[1], 1e-2)), np.log(gap), np.log(kappa)])
 
-    # public API
     def fit(self, counts: np.ndarray, hour_of_week: np.ndarray | None = None, n_restarts: int = 3,
             maxiter: int = 900, verbose: bool = False, seed: int = 0) -> "NBLatentAR":
         self._check_mutable()
@@ -197,8 +196,7 @@ class NBLatentAR(CountModel):
 
         rng = np.random.default_rng(seed)
 
-        # restart 0 is the moment start; the others jitter around it so that
-        # multiple initialisations still probe the surface (guide section 1.5)
+        # restart 0 is the moment start; the rest jitter around it
         base = self.moment_start(n)
         starts = [base]
         for _ in range(max(n_restarts, 1) - 1):

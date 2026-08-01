@@ -1,8 +1,4 @@
-"""Standard metric set (guide 1.11) and discrepancy definitions.
-
-Every metric takes a base-resolution count array, so trace, bootstrap and
-synthetic paths are scored by exactly the same code.
-"""
+"""Standard metric set and discrepancy definitions, all on base-resolution counts."""
 from __future__ import annotations
 
 from typing import Mapping, Sequence
@@ -13,9 +9,8 @@ import pandas as pd
 from .data import SCALES
 
 
-# aggregation and dispersion
 def aggregate(x: np.ndarray, q: int) -> np.ndarray:
-    """Non-overlapping sums of q consecutive base bins."""
+    """Return non-overlapping sums of q consecutive base bins."""
     x = np.asarray(x, dtype=float)
     if q <= 1:
         return x
@@ -26,7 +21,7 @@ def aggregate(x: np.ndarray, q: int) -> np.ndarray:
 
 
 def idc(x: np.ndarray) -> float:
-    """Index of dispersion for counts, Var/Mean."""
+    """Return the index of dispersion for counts, Var/Mean."""
     x = np.asarray(x, dtype=float)
     x = x[np.isfinite(x)]
     if len(x) < 2 or x.mean() <= 0:
@@ -35,25 +30,25 @@ def idc(x: np.ndarray) -> float:
 
 
 def idc_curve(x: np.ndarray, scales: Mapping[str, int] = SCALES) -> pd.Series:
-    """IDC(scale) with the number of effective windows recorded elsewhere."""
+    """Return IDC per aggregation scale; see `effective_windows` for their support."""
     return pd.Series({name: idc(aggregate(x, q)) for name, q in scales.items()})
 
 
 def effective_windows(n_bins: int, scales: Mapping[str, int] = SCALES) -> pd.Series:
-    """n_q of guide eq. (44): long scales are supported by very few windows."""
+    """Return the window count per scale; long scales are supported by very few."""
     return pd.Series({name: int(n_bins // q) for name, q in scales.items()})
 
 
-#: contribution of each 15-min lag to the lag-1 ACF of hourly (4-bin) sums
+# contribution of each 15-min lag to the lag-1 ACF of hourly (4-bin) sums
 HOURLY_ACF_LAG_WEIGHTS = {1: 1, 2: 2, 3: 3, 4: 4, 5: 3, 6: 2, 7: 1}
 
 
 def hourly_acf1_from_autocov(gamma0: float, gamma: Mapping[int, float]) -> float:
-    """Lag-1 ACF of hourly sums, given base-bin autocovariances gamma_1..gamma_7.
+    """Return the lag-1 ACF of hourly sums from base-bin autocovariances gamma_1..gamma_7.
 
     Summing four consecutive bins makes the hourly covariance a triangular
-    blend of the base-bin lags; the model-side calibrators use this to hit a
-    target hourly ACF without simulating.
+    blend of the base-bin lags, so calibrators can hit a target without
+    simulating.
     """
     num = sum(w * gamma[h] for h, w in HOURLY_ACF_LAG_WEIGHTS.items())
     den = 4.0 * gamma0 + 2.0 * sum((4 - h) * gamma[h] for h in (1, 2, 3))
@@ -73,9 +68,8 @@ def acf(x: np.ndarray, lags: Sequence[int]) -> pd.Series:
     return pd.Series(out)
 
 
-# episodes and tails
 def run_lengths(mask: np.ndarray) -> np.ndarray:
-    """Lengths of the maximal True runs in `mask`."""
+    """Return the lengths of the maximal True runs in `mask`."""
     mask = np.asarray(mask, dtype=bool)
     if mask.size == 0 or not mask.any():
         return np.empty(0, dtype=int)
@@ -90,7 +84,7 @@ def run_lengths(mask: np.ndarray) -> np.ndarray:
 
 
 def episode_stats(x: np.ndarray, busy_threshold: float, quiet_threshold: float = 0.0) -> pd.Series:
-    """Busy / quiet run texture. Thresholds must come from the training split."""
+    """Summarise busy and quiet runs; thresholds must come from the training split."""
     x = np.asarray(x, dtype=float)
     busy = run_lengths(x > busy_threshold)
     quiet = run_lengths(x <= quiet_threshold)
@@ -108,11 +102,10 @@ def episode_stats(x: np.ndarray, busy_threshold: float, quiet_threshold: float =
 
 
 def quiet_run_vs_geometric(counts: np.ndarray) -> pd.Series:
-    """Quiet-run tail against a geometric law with the same mean dwell.
+    """Compare the quiet-run tail with a geometric law of the same mean dwell.
 
-    A two-state chain's OFF dwell is geometric by construction; excursions of
-    an AR(1) below a threshold are not.  This is the texture-level fingerprint
-    separating the gated model from MMPP.
+    A two-state chain's OFF dwell is geometric by construction; AR(1)
+    excursions below a threshold are not, which separates the two families.
     """
     x = np.asarray(counts, dtype=float)
     runs = run_lengths(x == 0)
@@ -141,7 +134,7 @@ def quiet_run_vs_geometric(counts: np.ndarray) -> pd.Series:
 
 
 def rolling_tails(x: np.ndarray, window: int, quantiles: Sequence[float] = (0.95, 0.99)) -> pd.Series:
-    """Scheduling-relevant extremes of a rolling window sum."""
+    """Return upper quantiles and the maximum of a rolling window sum."""
     x = np.asarray(x, dtype=float)
     if len(x) < window:
         return pd.Series({f"roll{window}_q{int(q*100)}": np.nan for q in quantiles} | {f"roll{window}_max": np.nan})
@@ -153,7 +146,7 @@ def rolling_tails(x: np.ndarray, window: int, quantiles: Sequence[float] = (0.95
 
 
 def wavelet_variance(x: np.ndarray, n_levels: int = 8) -> pd.Series:
-    """Haar wavelet variance: persistence from hours to weeks (guide section 1.11)."""
+    """Return the Haar wavelet variance per level: persistence from hours to weeks."""
     x = np.asarray(x, dtype=float)
     out = {}
     cur = x.copy()
@@ -168,9 +161,8 @@ def wavelet_variance(x: np.ndarray, n_levels: int = 8) -> pd.Series:
     return pd.Series(out)
 
 
-# microstructure of reconstructed events
 def microstructure(job_times_s: np.ndarray, batch_times_s: np.ndarray, counts: np.ndarray) -> pd.Series:
-    """Event-reconstruction fidelity: zero-IAT, positive gaps, empty bins."""
+    """Return event-reconstruction fidelity: zero-IAT, positive gaps, empty bins."""
     job_times_s = np.sort(np.asarray(job_times_s, dtype=float))
     batch_times_s = np.sort(np.asarray(batch_times_s, dtype=float))
     job_iat = np.diff(job_times_s)
@@ -187,10 +179,10 @@ def microstructure(job_times_s: np.ndarray, batch_times_s: np.ndarray, counts: n
 
 
 def base_marginals(x: np.ndarray, bins_per_hour: int = 4) -> dict:
-    """The four base-bin facts the model is calibrated against, plus the max.
+    """Return the four base-bin calibration targets, plus the max.
 
-    One definition shared by the pipeline and the experiments, so a trace row
-    and a synthetic row are always built by the same code.
+    The single definition shared by the pipeline and the experiments, so trace
+    and synthetic rows are always built by the same code.
     """
     x = np.asarray(x, dtype=float)
     return {
@@ -209,7 +201,7 @@ def metric_vector(
     acf_lags: Sequence[int] = (1, 2, 4, 8, 24, 48, 96, 192, 384),
     rolling_windows: Sequence[int] = (4, 96),
 ) -> pd.Series:
-    """One flat metric vector per path, used for gates and for Z scores."""
+    """Return one flat metric vector per path, used by the gates and Z scores."""
     x = np.asarray(x, dtype=float)
     parts = [
         pd.Series({"mean": float(x.mean()), "total": float(x.sum()), "n_bins": len(x)}),
@@ -224,7 +216,6 @@ def metric_vector(
     return pd.concat(parts)
 
 
-# discrepancies (guide eq. 22, 23, 24)
 def d_idc(syn: np.ndarray, trace: np.ndarray, scales: Mapping[str, int] = SCALES) -> float:
     a, b = idc_curve(syn, scales), idc_curve(trace, scales)
     ratio = np.log(a.to_numpy() / b.to_numpy())
@@ -233,7 +224,7 @@ def d_idc(syn: np.ndarray, trace: np.ndarray, scales: Mapping[str, int] = SCALES
 
 
 def d_idc_shape(syn: np.ndarray, trace: np.ndarray, scales: Mapping[str, int] = SCALES) -> float:
-    """Same as d_idc after removing the level at the base scale."""
+    """Return d_idc computed after removing the level at the base scale."""
     a, b = np.log(idc_curve(syn, scales)), np.log(idc_curve(trace, scales))
     diff = (a - a.iloc[0]) - (b - b.iloc[0])
     diff = diff.to_numpy()[np.isfinite(diff.to_numpy())]
@@ -251,7 +242,7 @@ def d_acf(syn: np.ndarray, trace: np.ndarray, max_lag: int = 96) -> float:
 
 
 def z_score(m_syn: float, m_trace: float, se_bootstrap: float, eps: float = 1e-9) -> float:
-    """Guide eq. (24): penalise relative to the trace's own variability."""
+    """Return the discrepancy scaled by the trace's own bootstrap variability."""
     return float(abs(m_syn - m_trace) / max(se_bootstrap, eps))
 
 
@@ -276,11 +267,11 @@ def z_table(
     return pd.DataFrame(rows).set_index("metric")
 
 
-# analytic references, used by the metric unit tests (guide section 1.14)
+# analytic references, used by the metric unit tests
 def theoretical_idc_two_ar(
     mean: float, sigma: Sequence[float], phi: Sequence[float], kappa: float, q: int
 ) -> float:
-    """IDC at aggregation scale q for the NB / sum-of-AR(1) model, eq. (41)."""
+    """Return the exact IDC at aggregation scale q for the NB sum-of-AR(1) model."""
     V = float(np.sum(np.square(sigma)))
     m = float(mean)
     gamma0 = m + m * m * (np.exp(V) - 1.0 + np.exp(V) / kappa)
@@ -294,7 +285,7 @@ def theoretical_idc_two_ar(
 def theoretical_acf_two_ar(
     mean: float, sigma: Sequence[float], phi: Sequence[float], kappa: float, lag: int
 ) -> float:
-    """Guide eq. (37)."""
+    """Return the exact ACF at `lag` for the NB sum-of-AR(1) model."""
     V = float(np.sum(np.square(sigma)))
     m = float(mean)
     gamma0 = m + m * m * (np.exp(V) - 1.0 + np.exp(V) / kappa)

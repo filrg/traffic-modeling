@@ -1,14 +1,4 @@
-"""Does the ladder fail where appendix A.4 predicts?
-
-Builds a surrogate carrying the trace's four base-bin facts, then runs the
-ladder on it to check that each rung fails on the predicted gate.
-
-The ladder mirrors the paper's: rungs 2, 3, 4 and 4b, with `NBRegimeSwitch`
-kept as a benchmark row rather than a rung. Rung 4b is built the way the
-production model is, by moments rather than by likelihood.
-
-Run:  python -m seren_countfirst.experiments.a4_feasibility
-"""
+"""Run the ladder on a surrogate carrying the trace's four base-bin facts."""
 from __future__ import annotations
 
 import time
@@ -29,7 +19,7 @@ from ..metrics import (
 from ..models import IIDNegBin, NBLatentAR, NBRegimeSwitch, marginal_feasibility
 from ..models import NBGatedLatent
 
-# Seren SFT subset, 15-minute batch counts (preprocessing audit, section 7)
+# Seren SFT subset, 15-minute batch counts
 TRACE = {
     "mean": 3.747985,
     "variance": 274.206902,
@@ -41,19 +31,18 @@ TRACE = {
 
 def calibrate_surrogate(mean, variance, zero_fraction, acf_1h_target, kappa=8.0,
                         tau_fast_bins=2.0, dwell_off_bins=32.0, lam_off=0.01):
-    """Regime level with continuous spread inside the active state.
+    """Calibrate a regime level with continuous spread inside the active state.
 
-    A bare two-state Markov level does *not* reach the trace marginals either:
-    matching the variance from a two-point intensity forces kappa down to
-    about 0.1, and observation noise that heavy is white, so the ACF collapses
-    exactly as it does for the Gaussian log-latent.  The excess variance has to
-    sit in a *persistent* latent instead.  So the surrogate is
+    A bare two-state Markov level does not reach the trace marginals: matching
+    the variance from a two-point intensity forces kappa to about 0.1, and
+    observation noise that heavy is white, so the ACF collapses as it does for
+    the Gaussian log-latent. The excess variance must sit in a persistent
+    latent, giving
 
         log lambda_t = mu_{z_t} + x_t - V/2,   z_t a two-state Markov chain,
                                                x_t a stationary AR(1)
 
-    with kappa fixed at a moderate value.  Writing p = pi_off and using
-    E[e^{x - V/2}] = 1:
+    with kappa fixed. Writing p = pi_off and using E[e^{x - V/2}] = 1:
 
         lam_on   = (m - p lam_off) / (1 - p)
         E[lam^2] = (p lam_off^2 + (1-p) lam_on^2) e^V
@@ -92,8 +81,8 @@ def calibrate_surrogate(mean, variance, zero_fraction, acf_1h_target, kappa=8.0,
     sigma_fast = float(np.sqrt(V))
     lam = np.array([lam_off, lam_on])
 
-    # Regime persistence is pinned by the quiet-run texture (dwell_off_bins);
-    # the latent half-life is then solved against the hourly ACF.
+    # regime persistence is pinned by `dwell_off_bins`; the latent half-life is
+    # then solved against the hourly ACF
     p_off_on = 1.0 / float(dwell_off_bins)
     p_on_off = p * p_off_on / (1.0 - p)
     rho = 1.0 - p_off_on - p_on_off
@@ -136,11 +125,10 @@ def calibrate_surrogate(mean, variance, zero_fraction, acf_1h_target, kappa=8.0,
 
 
 def _gated_moment(x: np.ndarray):
-    """Rung 4b built the way the production model is: moments, not likelihood.
+    """Build rung 4b by moments, matching how the production model is calibrated.
 
-    Fitting 4b by MLE here would test an estimator the project has already
-    refuted (the likelihood drives tau_slow shorter and inflates kappa), so it
-    could not show the gated structure succeeding where the earlier rungs fail.
+    An MLE fit here would test a refuted estimator: the likelihood drives
+    tau_slow shorter and inflates kappa.
     """
     from ..run_pipeline import LONG_ACF_LAGS, MM4_KNOBS, SEED
 
@@ -152,8 +140,8 @@ def _gated_moment(x: np.ndarray):
         n_bins=len(x), seed=SEED, **MM4_KNOBS)
 
 
-#: gate 1 sets this, as it does in the pipeline: a 5% tolerance needs the
-#: ensemble mean's SE well under a third of it. Same value as N_PATHS_EVAL.
+# set by gate 1, as in the pipeline: a 5% tolerance needs the ensemble mean's
+# SE well under a third of it. Same value as N_PATHS_EVAL.
 N_PATHS_LADDER = 1200
 
 
@@ -179,11 +167,8 @@ def main(seed: int = 20240728, n_paths: int = N_PATHS_LADDER, n_surrogate_paths:
         "acf_1h_lag1": TRACE["acf_1h_lag1"],
     }
 
-    # The construction pins the targets in expectation, so check it against the
-    # ensemble, not one path.  A single realisation is a lottery here — per-path
-    # CV is 0.17 on the mean and 0.93 on IDC — and `default_rng(20240728)` draws
-    # a 98th-percentile path, which used to be printed as though the calibration
-    # had missed by 45%.
+    # the construction pins the targets in expectation, so it is checked against
+    # the ensemble: per-path CV is 0.17 on the mean and 0.93 on IDC
     rng = np.random.default_rng(seed)
     draws = [truth.simulate(TRACE["n_bins"], rng) for _ in range(n_surrogate_paths)]
     ens = pd.DataFrame([base_marginals(x) for x in draws])
@@ -192,12 +177,10 @@ def main(seed: int = 20240728, n_paths: int = N_PATHS_LADDER, n_surrogate_paths:
         print(f"  {k:>14}: target {tgt:9.4f}   ensemble mean {ens[k].mean():9.4f}"
               f"   median {ens[k].median():9.4f}   per-path CV {ens[k].std(ddof=1)/ens[k].mean():.3f}")
 
-    # The ladder needs one realisation, as a real trace is; take a typical one
-    # rather than an outlier. Selecting on the mean alone is not enough — the
-    # per-path CV of IDC is 0.93, so a median-mean path can still sit at the
-    # 86th percentile on dispersion, which quietly makes life harder for the
-    # simpler rungs. Score every path by its total log-distance from the
-    # ensemble median across all four facts instead.
+    # the ladder needs one realisation, so pick a typical path by total
+    # log-distance from the ensemble median across all four facts. Selecting on
+    # the mean alone is not enough: at CV 0.93 a median-mean path can still sit
+    # at the 86th percentile on dispersion.
     dev = sum((np.log(ens[k] / ens[k].median())).abs() for k in targets)
     pick = int(dev.idxmin())
     surrogate = draws[pick]
@@ -216,8 +199,8 @@ def main(seed: int = 20240728, n_paths: int = N_PATHS_LADDER, n_surrogate_paths:
         surrogate, lambda x: metric_vector(x, busy_threshold), method="stationary_24h", n_rep=120, seed=seed
     )
 
-    # each entry builds its own estimate, because the rungs are not all fitted
-    # the same way: 4b is moment-calibrated in production, so it is here too
+    # each entry builds its own estimate: the rungs are not all fitted the same
+    # way, and 4b is moment-calibrated in production
     candidates = [
         ("rung 2  iid NB", lambda x: IIDNegBin().fit(x)),
         ("rung 3  NB + 1 AR", lambda x: NBLatentAR(1).fit(x, n_restarts=2, maxiter=300)),

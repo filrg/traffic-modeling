@@ -8,10 +8,9 @@ import numpy as np
 
 from .nb import nb2_info_eta, nb2_score_eta
 
-# calendar offset (guide section 1.4) -- ablation only
 @dataclass
 class CalendarTerm:
-    """Normalised low-order Fourier hour-of-week offset, eq. (9)-(10)."""
+    """Normalised low-order Fourier hour-of-week offset. Ablation only."""
 
     beta: np.ndarray
     n_harmonics: int
@@ -43,7 +42,7 @@ class CalendarTerm:
                 break
             beta = new
         grid = cls.design(np.arange(168), n_harmonics) @ beta
-        grid = grid - np.log(np.mean(np.exp(grid)))  # eq. (9): weekly mean of exp is 1
+        grid = grid - np.log(np.mean(np.exp(grid)))  # normalise: weekly mean of exp is 1
         return cls(beta=beta, n_harmonics=n_harmonics, offset_by_how=grid)
 
     def offset(self, hour_of_week: np.ndarray) -> np.ndarray:
@@ -92,7 +91,7 @@ class CountModel:
 
     name = "base"
     rung: object = -1
-    #: "candidate" competes for selection; "benchmark" is reported but never chosen
+    # "candidate" competes for selection; "benchmark" is reported but never chosen
     role = "candidate"
 
     def __init__(self) -> None:
@@ -116,12 +115,11 @@ class CountModel:
             raise RuntimeError(f"{self.name} is frozen: refit is not allowed after export")
 
     def scaled_kappa(self, alpha: float, rule: str) -> float:
-        """Dispersion under load scaling; 'proportional' is the frozen rule.
+        """Return the dispersion under load scaling; 'proportional' is the frozen rule.
 
-        Summing alpha iid NB2(mu, kappa) gives NB2(alpha*mu, alpha*kappa)
-        exactly, so 'proportional' states that alpha superposes alpha
-        independent submitters onto one shared latent driver. The two rules
-        coincide at alpha = 1.
+        Summing alpha iid NB2(mu, kappa) gives NB2(alpha*mu, alpha*kappa), so
+        'proportional' models alpha independent submitters on one shared latent
+        driver. The rules coincide at alpha = 1.
         """
         kappa = float(self.params_["kappa"])
         if rule == "constant":

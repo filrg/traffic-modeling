@@ -6,7 +6,7 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 def ar1_precision(n: int, sigma: float, phi: float) -> sp.csc_matrix:
-    """Precision of a stationary AR(1) with marginal variance sigma^2."""
+    """Return the precision of a stationary AR(1) with marginal variance sigma^2."""
     c = 1.0 / (sigma ** 2 * (1.0 - phi ** 2))
     main = np.full(n, c * (1.0 + phi ** 2))
     main[0] = c
@@ -18,8 +18,8 @@ def ar1_precision(n: int, sigma: float, phi: float) -> sp.csc_matrix:
 def ar1_path(n_bins: int, sigma: float, phi: float, rng: np.random.Generator) -> np.ndarray:
     """Simulate one stationary AR(1) path of length `n_bins`.
 
-    The first bin is drawn from the stationary law, so there is no burn-in and
-    no post-hoc rescaling: the marginal mean has to come out right on its own.
+    The first bin is drawn from the stationary law: no burn-in, and no
+    post-hoc rescaling of the path.
     """
     z = np.empty(n_bins)
     z[0] = rng.normal(0.0, sigma)
@@ -30,7 +30,7 @@ def ar1_path(n_bins: int, sigma: float, phi: float, rng: np.random.Generator) ->
 
 
 def ar1_logdet_precision(n: int, sigma: float, phi: float) -> float:
-    """log det Q = -n log sigma^2 - (n-1) log(1 - phi^2)."""
+    """Return log det Q = -n log sigma^2 - (n-1) log(1 - phi^2)."""
     return -n * np.log(sigma ** 2) - (n - 1) * np.log1p(-phi ** 2)
 
 

@@ -1,4 +1,4 @@
-"""Parameter recovery: the estimator itself must be tested, not only the metrics."""
+"""Parameter recovery, testing the estimator rather than the metrics."""
 from __future__ import annotations
 
 from typing import Callable, List, Sequence
@@ -6,7 +6,7 @@ from typing import Callable, List, Sequence
 import numpy as np
 import pandas as pd
 
-# parameter recovery (added gate: the estimator itself must be tested)
+
 def parameter_recovery(
     model_factory: Callable[[], object],
     truth_model,
@@ -19,8 +19,7 @@ def parameter_recovery(
 ) -> pd.DataFrame:
     """Simulate from a known model, refit, and check the parameters come back.
 
-    Metric unit tests check the yardstick; this checks the estimator, and in
-    particular the kappa versus fast-latent-variance confound.
+    Targets the kappa versus fast-latent-variance confound in particular.
     """
     rows: List[dict] = []
     for rep in range(n_replicates):

@@ -21,7 +21,7 @@ from ..state import _load, _models, _save
 
 
 def _trace_events(state: dict) -> tuple:
-    """Trace batch times as seconds from the first bin edge, with sizes and per-bin classes."""
+    """Return trace batch times in seconds from the first bin edge, with sizes and classes."""
     counts = state["counts"]
     origin = counts.index[0]
     times_s = (pd.DatetimeIndex(state["batch_times"]) - origin).total_seconds().to_numpy(dtype=float)
@@ -35,13 +35,11 @@ def _trace_events(state: dict) -> tuple:
 
 
 def stage_reconstruct() -> None:
-    """Counts -> batch timestamps -> sizes -> jobs, scored against the trace's microstructure.
+    """Reconstruct events and score them against the trace's microstructure.
 
-    This is the layer the count model is agnostic to: it decides *where inside a
-    bin* the batches land, which is what produces the zero-inter-arrival
-    structure that made a gap-first model awkward in the first place.  Reported,
-    not gated: adding a ninth structural gate would invalidate the eight-gate
-    certification, so that stays a decision rather than a side effect.
+    This layer decides where inside a bin the batches land, which produces the
+    zero-inter-arrival structure. Reported, not gated: a ninth structural gate
+    would invalidate the eight-gate certification.
     """
     state = _load()
     RESULTS.mkdir(parents=True, exist_ok=True)
@@ -56,7 +54,7 @@ def stage_reconstruct() -> None:
     trace_micro = microstructure(trace_jobs, times_s, counts.values)
     print("trace microstructure:", {k: round(float(v), 4) for k, v in trace_micro.items()})
 
-    # the two mark samplers of guide eq. (14), as an ablation
+    # the two mark samplers, compared as an ablation
     by_class = {str(lab): sizes[trace_classes[np.clip((times_s // bin_s).astype(int), 0,
                                                       len(trace_classes) - 1)] == lab]
                 for lab in np.unique(trace_classes)}
@@ -65,9 +63,8 @@ def stage_reconstruct() -> None:
         "conditional": make_conditional_mark_sampler(by_class, fallback=sizes),
     }
 
-    # the ablation must be paired: a mark sampler consumes randomness, so drawing
-    # the count path from the same stream would put the two arms on different
-    # paths and compare the load lottery instead of the marks
+    # count paths are drawn once and shared: a mark sampler consumes randomness,
+    # so a shared stream would put the two arms on different count paths
     path_rng = np.random.default_rng(SEED + 3)
     syn_paths = [model.simulate(len(counts), path_rng, alpha=cal)
                  for _ in range(N_PATHS_RECONSTRUCT)]
@@ -77,13 +74,12 @@ def stage_reconstruct() -> None:
         for rep, syn in enumerate(syn_paths):
             rng = np.random.default_rng(SEED + 5000 + rep)
             try:
-                # thresholds stay frozen from the training interval (hard rule 4)
+                # thresholds stay frozen from the training interval
                 res = reconstruct_events(syn, bin_s, rng, sampler, offsets=templates,
                                          classes=scheme.classify(syn))
             except ValueError:
-                # hard rule 3: an overflowing bin is reported, never merged away.
-                # It happens at alpha = 1 because the model's upper tail runs past
-                # the trace's max of 530, so this is a result, not an error.
+                # an overflowing bin is counted, never merged away. It occurs at
+                # alpha = 1 because the model's upper tail runs past the trace max.
                 overflow += 1
                 continue
             rows.append({"marks": label, "replicate": rep, "n_batches": res.n_batches,
@@ -114,9 +110,9 @@ def stage_reconstruct() -> None:
     print("\nper-path spread (sd):")
     print(summary.xs("std", axis=1, level=1).round(4).to_string())
 
-    # Export grid by load factor, scored both ways: strict whole-second placement,
-    # which raises rather than merge (hard rule 3), and the adaptive sub-second
-    # grid, which refines only the bins that cannot fit.
+    # export grid by load factor, scored both ways: strict whole-second placement,
+    # which raises rather than merges, and the adaptive sub-second grid, which
+    # refines only the bins that cannot fit
     grid = []
     for alpha in RECONSTRUCT_ALPHAS:
         path_rng = np.random.default_rng(SEED + 4)
@@ -125,14 +121,14 @@ def stage_reconstruct() -> None:
             syn = model.simulate(len(counts), path_rng, alpha=cal * alpha)
             risks.append(collision_risk(syn, bin_s))
             try:
-                # forced strict, to show what the whole-second grid alone can do
+                # forced strict, to measure what the whole-second grid alone can do
                 reconstruct_events(syn, bin_s, np.random.default_rng(SEED + 6),
                                    samplers["iid"], offsets=templates, on_overflow="raise")
                 strict_ok.append(True)
             except ValueError:
                 strict_ok.append(False)
-            # the default path: 'auto' resolves to subsecond above alpha = 1, and
-            # stays strict at or below it, so this can still refuse at alpha <= 1
+            # 'auto' resolves to subsecond above alpha = 1 and stays strict at or
+            # below it, so this arm can still refuse at alpha <= 1
             try:
                 res = reconstruct_events(syn, bin_s, np.random.default_rng(SEED + 6),
                                          samplers["iid"], offsets=templates, alpha=alpha)

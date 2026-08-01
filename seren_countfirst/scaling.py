@@ -1,8 +1,4 @@
-"""Load scaling by intensity multiplication (guide 1.9).
-
-Superposition is a benchmark with different workload semantics, never an
-equivalent; no per-path rate normalisation is allowed anywhere in this module.
-"""
+"""Load scaling by intensity multiplication, with superposition as a benchmark."""
 from __future__ import annotations
 
 from typing import List, Sequence
@@ -18,17 +14,17 @@ DEFAULT_ALPHAS: tuple = (0.5, 1.0, 2.0, 4.0, 8.0)
 
 def simulate_at_load(model, n_bins: int, alpha: float, rng: np.random.Generator,
                      kappa_rule: str = "proportional", **kwargs) -> np.ndarray:
-    """One path at load alpha. The model's frozen structure is never re-tuned."""
+    """Draw one path at load alpha; the model's frozen structure is not re-tuned."""
     return model.simulate(n_bins, rng, alpha=alpha, kappa_rule=kappa_rule, **kwargs)
 
 
 def superposition(model, n_bins: int, k: int, rng: np.random.Generator, **kwargs) -> np.ndarray:
-    """k independent populations, guide eq. (19). Different semantics from alpha = k."""
+    """Sum k independent populations; semantically distinct from alpha = k."""
     return np.sum([model.simulate(n_bins, rng, alpha=1.0, **kwargs) for _ in range(k)], axis=0)
 
 
 def rate_error(counts_alpha: np.ndarray, counts_ref: np.ndarray, alpha: float) -> float:
-    """Guide eq. (20): |N_alpha / (alpha N_1) - 1|."""
+    """Return |N_alpha / (alpha N_1) - 1|."""
     denom = alpha * float(np.sum(counts_ref))
     if denom <= 0:
         return np.nan
@@ -46,11 +42,10 @@ def scaling_report(
     seed: int = 0,
     **sim_kwargs,
 ) -> pd.DataFrame:
-    """Rate error plus IDC / ACF / tail drift and export collision rate per load.
+    """Report rate error, IDC/ACF/tail drift and export collision rate per load.
 
-    Neither kappa rule preserves raw IDC and ACF automatically, because the
-    ratio of latent variability to count noise moves with alpha.  The drift is
-    measured, not assumed.
+    Neither kappa rule preserves raw IDC and ACF, because the ratio of latent
+    variability to count noise moves with alpha; the drift is measured here.
     """
     rows: List[dict] = []
     for rule in kappa_rules:
@@ -60,7 +55,7 @@ def scaling_report(
         thr = busy_threshold if busy_threshold is not None else float(np.quantile(ref_paths[0], 0.8))
         ref_idc = idc_curve(np.concatenate(ref_paths[:1]))
         ref_acf = acf(ref_paths[0], [1, 4, 96])
-        # the same statistics over every reference path, not just the first
+        # the same statistics averaged over every reference path
         ref_idc_mean = pd.DataFrame([idc_curve(p) for p in ref_paths]).mean()
         ref_acf_mean = pd.DataFrame([acf(p, [1, 4, 96]) for p in ref_paths]).mean()
 
@@ -84,7 +79,7 @@ def scaling_report(
                     "expected_total": expected,
                     "mean_total": mean_total,
                     "sd_total": float(totals.std(ddof=1)),
-                    # gate 8 needs the Monte Carlo error, not just its spread
+                    # gate 8 grades the Monte Carlo error, not the spread
                     "se_total": float(totals.std(ddof=1) / np.sqrt(len(totals))),
                     "rate_error_vs_theory": float(abs(mean_total / expected - 1.0)),
                     "rate_error_vs_alpha1": float(abs(mean_total / max(alpha * ref_total, 1e-12) - 1.0)),
@@ -95,8 +90,8 @@ def scaling_report(
                     "ACF_lag1": float(acf_a[1]),
                     "ACF_lag1_drift": float(acf_a[1] - ref_acf[1]),
                     "ACF_lag96_drift": float(acf_a[96] - ref_acf[96]),
-                    # path-averaged drift: what gate 8 grades, since a one-path
-                    # IDC at the day scale is mostly sampling error
+                    # path-averaged drift: a one-path day-scale IDC is mostly
+                    # sampling error, so gate 8 grades these columns
                     "IDC_15m_drift_log_mean": float(np.log(idc_mean["15m"] / ref_idc_mean["15m"])),
                     "IDC_1d_drift_log_mean": float(np.log(idc_mean["1d"] / ref_idc_mean["1d"])),
                     "ACF_lag1_drift_mean": float(acf_mean[1] - ref_acf_mean[1]),
@@ -110,7 +105,7 @@ def scaling_report(
 
 def superposition_comparison(model, n_bins: int, k_values: Sequence[int] = (2, 4, 8),
                              n_paths: int = 10, seed: int = 0, **sim_kwargs) -> pd.DataFrame:
-    """Show explicitly that superposition and intensity multiplication differ."""
+    """Contrast superposition with intensity multiplication at matched load."""
     rows = []
     for k in k_values:
         rng = np.random.default_rng(seed)
@@ -133,10 +128,10 @@ def superposition_comparison(model, n_bins: int, k_values: Sequence[int] = (2, 4
 
 def calibrate_intercept(model, n_bins: int, target_rate_per_bin: float, rng: np.random.Generator,
                         n_paths: int = 20, **sim_kwargs) -> float:
-    """Final scalar rate calibration, allowed only after the structural gates pass.
+    """Return the global multiplicative correction on alpha.
 
-    Returns the multiplicative correction on alpha.  It is applied globally to
-    the intercept, never per synthetic path.
+    Applied to the intercept, never per synthetic path, and only after the
+    structural gates have passed.
     """
     paths = [model.simulate(n_bins, rng, alpha=1.0, **sim_kwargs) for _ in range(n_paths)]
     realised = float(np.mean([p.mean() for p in paths]))

@@ -1,4 +1,4 @@
-"""Rolling-origin fold evidence and the scale-support guard (guide section 1.10)."""
+"""Rolling-origin fold evidence and the scale-support guard."""
 from __future__ import annotations
 
 from typing import Callable, List, Optional, Sequence, Tuple
@@ -10,9 +10,9 @@ from ..bootstrap import bootstrap_metric_envelope
 from ..data import Split
 from ..metrics import effective_windows, metric_vector, z_score
 
+
 def scale_support(n_bins: int) -> pd.DataFrame:
-    """Effective window counts, so fixed-scale statistics are only reported
-    where the horizon actually contains enough aggregation windows."""
+    """Return effective window counts per scale, and whether each is reportable."""
     nq = effective_windows(n_bins)
     return pd.DataFrame(
         {
@@ -23,9 +23,7 @@ def scale_support(n_bins: int) -> pd.DataFrame:
         }
     ).set_index("scale")
 
-# gate 7 evidence: rolling-origin folds (guide section 1.10)
-#: metrics graded per fold; IDC scales a short window cannot support are
-#: dropped fold by fold through `scale_support`
+# metrics graded per fold; unsupported IDC scales are dropped via `scale_support`
 FOLD_CORE_METRICS: Tuple[str, ...] = (
     "mean",
     "zero_bin_fraction",
@@ -49,18 +47,15 @@ def evaluate_on_folds(
 ) -> pd.DataFrame:
     """Score one model against every rolling-origin validation window.
 
-    A window is graded against the joint uncertainty of the window itself (its
-    trace-native bootstrap SE) and of the generator (the spread of the metric
-    across simulated paths of the same duration).  Both terms are needed: over
-    21 days a stochastic model is not expected to hit one realisation, only to
-    contain it, and normalising by the bootstrap SE alone would demand
-    deterministic agreement.
+    Each window is graded against the joint uncertainty of the window (its
+    trace-native bootstrap SE) and of the generator (metric spread across
+    simulated paths of the same duration). Both terms are needed: over 21 days a
+    stochastic model can only contain a realisation, not hit it, so the
+    bootstrap SE alone would demand deterministic agreement.
 
-    The caller's global rate calibration travels in `sim_kwargs` unchanged: a
-    per-fold rescaling would be exactly the per-window normalisation the method
-    forbids.  Pass `refit` to fit on each fold's training part instead of
-    holding one frozen model, which tests the estimator rather than the frozen
-    candidate.
+    The caller's global rate calibration travels in `sim_kwargs` unchanged; no
+    per-fold rescaling is applied. Pass `refit` to fit on each fold's training
+    part, which grades the estimator rather than the frozen candidate.
     """
     rows: List[dict] = []
     for k, fold in enumerate(folds, start=1):

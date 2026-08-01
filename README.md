@@ -26,9 +26,9 @@ python -m seren_countfirst.run_pipeline fit mm4
 python -m seren_countfirst.run_pipeline evaluate scaling horizon reconstruct baselines export
 ```
 
-Every stage is resumable: state persists between invocations as npy, csv and
-json, never pickle. Stages after `fit` may be listed together and run in
-sequence; `fit` takes rung names, so it runs on its own.
+Every stage is resumable: state persists as npy, csv and json, never pickle.
+Stages after `fit` may be listed together; `fit` takes rung names, so it runs on
+its own.
 
 Generating a workload directly:
 
@@ -49,8 +49,7 @@ job arrivals — comes from the `reconstruct` stage.
 
 ## Paths and configuration
 
-Paths resolve relative to the repository and are environment-overridable, so
-the package runs unchanged in a sandbox, in CI and on a workstation:
+Paths resolve relative to the repository and are environment-overridable:
 
 | variable | default | holds |
 |---|---|---|
@@ -85,8 +84,11 @@ SEREN_RESULTS=$PWD/results_scratch python -m seren_countfirst.run_pipeline evalu
 python -m pytest seren_countfirst/tests -q
 ```
 
-Three kinds: harness invariants that encode the methodology as executable
-rules, numerical pins that fix simulation checksums and the metric vector, and
-a smoke suite that fits, simulates and freezes every model on a short synthetic
-series. A failing pin means a numerical result moved — treat it as the
-specification working, not as a test to update.
+Three kinds: harness invariants that encode the methodology as executable rules,
+numerical pins that fix simulation checksums and the metric vector, and a smoke
+suite that fits, simulates and freezes every model on a short synthetic series.
+A failing pin means a numerical result moved — treat it as the specification
+working, not as a test to update.
+
+Design rationale is in `docs/`: `design-history.md` (decision log),
+`HANDOFF.md` (verified numbers), `design-notes.md` (model and module rules).

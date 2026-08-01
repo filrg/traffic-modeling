@@ -1,17 +1,4 @@
-"""Gated latent-intensity NB, rung 4b of the ladder (guide section 1.5).
-
-A soft threshold on a shared slow latent both gates activity and ramps the
-active level; there is no discrete regime chain.
-
-The gate latent may carry two timescales,
-
-    u_t = sqrt(1 - w^2) u_slow,t + w u_long,t,
-
-both unit-variance AR(1).  The marginal of u stays N(0, 1), so every quadrature
-moment below - and with it the mean, the variance and the zero fraction - is
-untouched by w; only corr(u_t, u_t+h) changes.  `w_long = 0` reduces exactly to
-the single-scale model, including the simulation RNG stream.
-"""
+"""Gated latent-intensity NB, rung 4b of the ladder."""
 from __future__ import annotations
 
 from typing import Dict, List, Mapping, Optional
@@ -47,7 +34,7 @@ _NX, _WX = roots_hermitenorm(40)
 _WX = _WX / _WX.sum()
 
 
-# quadrature moments (all deterministic; used by calibration and by fitting)
+# quadrature moments: deterministic, shared by calibration and fitting
 def _gate(u: np.ndarray, a: float, c: float) -> np.ndarray:
     return expit(a * (u - c))
 
@@ -61,7 +48,7 @@ def _z2(a: float, b: float, c: float) -> float:
 
 
 def _second_moment_ratio(a: float, b: float, c: float, sigma_f: float) -> float:
-    """E[lambda^2] / m^2."""
+    """Return E[lambda^2] / m^2."""
     z1 = _z1(a, b, c)
     return _z2(a, b, c) / max(z1 * z1, 1e-300) * float(np.exp(sigma_f ** 2))
 
@@ -76,7 +63,7 @@ def _zero_prob(m: float, a: float, b: float, c: float, sigma_f: float, kappa: fl
 
 
 def _pair_moment(a: float, b: float, c: float, r: float) -> float:
-    """E[g(U) g(U') e^{b(U+U')}] with corr(U, U') = r."""
+    """Return E[g(U) g(U') e^{b(U+U')}] with corr(U, U') = r."""
     U = _N2[:, None]
     V = _N2[None, :]
     Up = r * U + np.sqrt(max(1.0 - r * r, 0.0)) * V
@@ -85,7 +72,7 @@ def _pair_moment(a: float, b: float, c: float, r: float) -> float:
 
 
 def _corr_u(h: int, phi_slow: float, phi_long: float, w_long: float) -> float:
-    """corr(u_t, u_t+h) for the two-scale gate latent; w_long = 0 gives phi_slow^h."""
+    """Return corr(u_t, u_t+h) for the two-scale gate latent; w_long = 0 gives phi_slow^h."""
     w2 = w_long * w_long
     return (1.0 - w2) * phi_slow ** h + w2 * phi_long ** h
 
@@ -110,21 +97,29 @@ def _hourly_acf1(m, a, b, c, sigma_f, kappa, phi_s, phi_f, phi_l=None, w_long=0.
 
 
 def _base_acf(m, a, b, c, sigma_f, kappa, phi_s, phi_f, phi_l, w_long, h) -> float:
-    """ACF of the base-resolution counts at lag h."""
+    """Return the ACF of the base-resolution counts at lag h."""
     g0 = _gamma0(m, a, b, c, sigma_f, kappa)
     return _autocov(m, a, b, c, sigma_f, _corr_u(h, phi_s, phi_l, w_long), phi_f, h) / g0
 
 
 class NBGatedLatent(CountModel):
+    """NB counts driven by a soft gate on a latent, with no discrete regime chain.
+
+    The gate latent may carry two timescales as
+    `u_t = sqrt(1 - w^2) u_slow,t + w u_long,t`, both unit-variance AR(1). The
+    marginal of u stays N(0, 1), so the quadrature moments — and with them the
+    mean, variance and zero fraction — do not depend on w; only corr(u_t, u_t+h)
+    does. `w_long = 0` reduces to the single-scale model, RNG stream included.
+    """
+
     name = "nb_gated"
     rung = "4b"
 
     def __init__(self, sharpness: float = 4.0) -> None:
         super().__init__()
-        self.a = float(sharpness)  # fixed by default; profiled, not free-fitted
+        self.a = float(sharpness)  # profiled, not free-fitted
         self.latent_mode_: Optional[np.ndarray] = None
 
-    # marginal calibration (also the moment initialiser)
     @classmethod
     def calibrate(cls, mean: float, variance: float, zero_fraction: float, acf_1h: float,
                   sharpness: float = 4.0, kappa: float = 8.0, sigma_fast: float = 0.6,
@@ -133,14 +128,12 @@ class NBGatedLatent(CountModel):
                   tau_long_bins: Optional[float] = None, w_long: float = 0.0) -> "NBGatedLatent":
         """Calibrate to the trace moments; no likelihood is evaluated.
 
-        `acf_long` maps base-bin lags to target ACF values and switches on the
-        second slow scale: `w_long` and `tau_long_bins` are solved by least
-        squares over those lags while `tau_slow_bins` is re-solved at every
-        step to keep the hourly lag-1 ACF exact.  Several long lags are used on
-        purpose — the trace's lag-96 spike is diurnal echo, and with no
-        calendar in the model it is envelope to be averaged through, not a
-        target to hit.  Left at the default the second scale is off and the
-        result is the single-scale calibration unchanged.
+        `acf_long` maps base-bin lags to target ACF values and enables the second
+        slow scale: `w_long` and `tau_long_bins` are solved by least squares over
+        those lags, with `tau_slow_bins` re-solved at each step to keep the hourly
+        lag-1 ACF exact. Multiple long lags are required because the trace's
+        lag-96 spike is diurnal echo, which a calendar-free model can only match
+        in envelope. Omitting `acf_long` gives the single-scale calibration.
         """
         from scipy import stats
 
@@ -164,7 +157,7 @@ class NBGatedLatent(CountModel):
         phi_f = half_life_to_phi(tau_fast_bins)
 
         def solve_tau_slow(phi_l: float, w: float) -> float:
-            """tau_slow that puts the hourly lag-1 ACF exactly on target."""
+            """Solve for the tau_slow that puts the hourly lag-1 ACF on target."""
             def acf_gap(tau_s):
                 return _hourly_acf1(m, a, b, c, sigma_fast, kappa,
                                     half_life_to_phi(tau_s), phi_f, phi_l, w) - acf_1h
@@ -182,7 +175,7 @@ class NBGatedLatent(CountModel):
 
             def long_loss(theta):
                 w_try = float(expit(theta[0]))
-                # same bracket the tau_slow solve uses; keeps Nelder-Mead off the overflow
+                # same bracket as the tau_slow solve, to keep Nelder-Mead in range
                 tau_try = float(np.exp(np.clip(theta[1], np.log(2.0), np.log(5000.0))))
                 phi_l = half_life_to_phi(tau_try)
                 tau_s = solve_tau_slow(phi_l, w_try)
@@ -223,25 +216,19 @@ class NBGatedLatent(CountModel):
                            n_paths: int = 8, n_rounds: int = 2, max_inflation: float = 3.0,
                            marginals: bool = False, marginal_paths: int = 200,
                            **kwargs) -> "NBGatedLatent":
-        """Calibrate so the model's statistics *at the trace's own length* hit the target.
+        """Calibrate so the model's statistics at length `n_bins` hit the target.
 
-        `calibrate` matches the model's analytic ACF to a target measured
-        empirically on one finite path, which is not like for like: at 13272
-        bins the empirical ACF of this process runs 15-25% below its true value,
-        and the trace is one such path.  Matching analytic to empirical
-        therefore lands the simulated model below the trace twice over.
+        `calibrate` matches an analytic ACF to a target measured on one finite
+        path. At 13272 bins the empirical ACF of this process runs 15-25% below
+        its true value, so that comparison is biased. Here the attenuation is
+        measured — simulate at `n_bins`, compare with the analytic value, and
+        re-solve against targets divided by that ratio. Seeded and deterministic;
+        `calibrate` itself stays analytic.
 
-        Here the attenuation is measured rather than assumed — simulate at
-        `n_bins`, compare with the analytic value, and re-solve against targets
-        divided by that ratio.  Seeded and deterministic; `calibrate` itself
-        stays analytic and pure.
-
-        `marginals` extends the same correction to the variance, the zero
-        fraction and `acf_1h`, which are otherwise still matched analytic to
-        empirical and inherit the identical bias.  The mean is never corrected:
-        the sample mean is unbiased for it, and it anchors the rate the caller
-        asked for.  Default off, so the frozen candidates keep their published
-        values, RNG stream included.
+        `marginals` extends the correction to the variance, zero fraction and
+        `acf_1h`, which carry the same bias. The mean is never corrected: the
+        sample mean is unbiased and anchors the requested rate. Off by default,
+        so frozen candidates keep their published values and RNG stream.
         """
         targets = {int(h): float(v) for h, v in acf_long.items()}
         lags = sorted(targets)
@@ -262,14 +249,14 @@ class NBGatedLatent(CountModel):
                 ana = _base_acf(p["mean"], p["a"], p["b"], p["c"], p["sigma_fast"], p["kappa"],
                                 p["phi_slow"], p["phi_fast"], p["phi_long"], p["w_long"], h)
                 r = float(sim[h]) / ana if ana > 1e-9 else 1.0
-                # a bounded correction: attenuation, never a licence to run away
+                # one-sided: the correction may only undo attenuation
                 attenuation[h] = float(np.clip(r, 1.0 / max_inflation, 1.0))
             adjusted = {h: targets[h] / attenuation[h] for h in lags}
             if marginals:
                 imp = model.implied_marginals()
                 # each ratio is measured on the functional the pipeline reads off
-                # the trace: for dispersion that is IDC = var/mean on one path,
-                # not the raw variance, since E[var]/E[mean] != E[var/mean] here
+                # the trace: dispersion is per-path IDC, not the raw variance,
+                # because E[var]/E[mean] != E[var/mean] here
                 mrng = np.random.default_rng(seed + 104729)
                 mpaths = [model.simulate(int(n_bins), mrng) for _ in range(int(marginal_paths))]
                 measured = {
@@ -282,8 +269,8 @@ class NBGatedLatent(CountModel):
                             "acf_1h": float(imp["acf_1h_lag1"])}
                 for k in m_targets:
                     r = measured[k] / analytic[k] if analytic[k] > 1e-12 else 1.0
-                    # two-sided here: the zero fraction is an indicator average and
-                    # attenuates the other way, unlike the mean-subtracted statistics
+                    # two-sided: the zero fraction is an indicator average and can
+                    # bias either way, unlike the mean-subtracted statistics
                     m_adj[k] = m_targets[k] / float(np.clip(r, 1.0 / max_inflation, max_inflation))
             model = cls.calibrate(mean, m_adj["variance"], m_adj["zero_fraction"], m_adj["acf_1h"],
                                   acf_long=adjusted, **kwargs)
@@ -292,7 +279,7 @@ class NBGatedLatent(CountModel):
         return model
 
     def _slow_scales(self) -> tuple:
-        """(phi_slow, phi_long, w_long), tolerating params saved before the second scale."""
+        """Return (phi_slow, phi_long, w_long), tolerating params saved before the second scale."""
         p = self.params_
         w = float(p.get("w_long", 0.0))
         return float(p["phi_slow"]), float(p.get("phi_long", p["phi_slow"])), w
@@ -329,14 +316,13 @@ class NBGatedLatent(CountModel):
         phi_s, phi_l, w = self._slow_scales()
         u = ar1_path(n_bins, 1.0, phi_s, rng)
         if w > 0.0:
-            # drawn only when the second scale is live, so w_long = 0 keeps the RNG stream
+            # drawn only when the second scale is live, so w_long = 0 preserves the RNG stream
             u = np.sqrt(1.0 - w * w) * u + w * ar1_path(n_bins, 1.0, phi_l, rng)
         x = ar1_path(n_bins, p["sigma_fast"], p["phi_fast"], rng)
         lam = np.exp(self._eta_from_states(u, x, alpha, gate_shift))
         counts = nb2_sample(lam, self.scaled_kappa(alpha, kappa_rule), rng).astype(float)
         return (counts, lam) if return_intensity else counts
 
-    # Laplace machinery
     def _mode(self, n, m, b, c, tau_s, sf, tau_f, kappa, x0=None, max_iter=60, tol=1e-7):
         T = len(n)
         a = self.a
@@ -367,7 +353,7 @@ class NBGatedLatent(CountModel):
             gnorm = float(np.linalg.norm(grad) / np.sqrt(grad.size))
             if gnorm < tol:
                 break
-            # Fisher scoring: per-bin outer([Ju,1]) w -> PSD observation block
+            # Fisher scoring: per-bin outer([Ju, 1]) * w gives a PSD observation block
             H = sp.bmat(
                 [[Qu + sp.diags(Ju * Ju * w), sp.diags(Ju * w)],
                  [sp.diags(Ju * w), Qx + sp.diags(w)]], format="csc"
@@ -414,13 +400,12 @@ class NBGatedLatent(CountModel):
 
     def fit(self, counts: np.ndarray, n_restarts: int = 2, maxiter: int = 200,
             seed: int = 0, verbose: bool = False, **kwargs) -> "NBGatedLatent":
-        """Laplace MLE of the **single-scale** submodel (`w_long = 0`).
+        """Fit the single-scale submodel (`w_long = 0`) by Laplace MLE.
 
-        The second slow scale is calibrated by moments, not fitted: at
-        `n_restarts=3, maxiter=300` this estimator converges, three restarts
-        agree, and it drives `tau_slow` shorter (12.3 bins against the
-        moment-calibrated 17.3) while pushing overdispersion into kappa. Fitting
-        the long scale would fight the very persistence it is there to supply.
+        The second slow scale is calibrated by moments, not fitted. At
+        `n_restarts=3, maxiter=300` this estimator converges and restarts agree,
+        but it drives `tau_slow` shorter (12.3 bins against the moment-calibrated
+        17.3) and pushes overdispersion into kappa.
         """
         self._check_mutable()
         n = np.asarray(counts, dtype=float)
@@ -480,7 +465,7 @@ class NBGatedLatent(CountModel):
         self.params_ = {
             "mean": float(np.exp(log_m)), "b": float(b), "c": float(c), "a": self.a,
             "tau_slow_bins": tau_s, "phi_slow": half_life_to_phi(tau_s),
-            # single-scale submodel: the second scale is inert, not absent
+            # second scale inert, not absent: keys stay present for round-tripping
             "tau_long_bins": tau_s, "phi_long": half_life_to_phi(tau_s), "w_long": 0.0,
             "sigma_fast": sf, "tau_fast_bins": tau_f, "phi_fast": half_life_to_phi(tau_f),
             "kappa": float(np.exp(log_k)), "Z1": _z1(self.a, float(b), float(c)),

@@ -1,9 +1,4 @@
-"""Sequential structural gates (guide section 1.13).
-
-Gates are sequential and structural: a weighted score may rank candidates that
-already passed, but never compensates a structural failure. Do not reorder them
-to make a candidate pass.
-"""
+"""Sequential structural gates; a weighted score only ranks candidates that passed."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -14,7 +9,7 @@ import pandas as pd
 
 from ..metrics import metric_vector, z_table
 
-# sequential gates (guide section 1.13)
+
 @dataclass
 class GateResult:
     name: str
@@ -47,16 +42,13 @@ class GateReport:
 class GateEvidence:
     """Evidence and tolerances the gates need beyond one metric comparison.
 
-    Missing evidence fails its gate rather than passing it: a candidate that
-    reaches gate 7 without folds has not been shown to be stable, and saying so
-    is the whole point of the gate.  `idc_envelope` is the exception — gate 3
-    falls back to the single shared envelope when none is given, so old callers
-    keep their behaviour exactly.
+    Missing evidence fails its gate rather than passing it. `idc_envelope` is
+    the exception: gate 3 falls back to the single shared envelope when none is
+    given, preserving the behaviour of older callers.
 
-    The tolerances are declared requirements, not fitted quantities, so they
-    are named here instead of being buried in a gate body. `alpha_range` is the
-    load range the model card claims; `idc_drift_tol` is an engineering
-    tolerance on second-order distortion across that range.
+    The tolerances are declared requirements, not fitted quantities.
+    `alpha_range` is the load range the model card claims; `idc_drift_tol`
+    bounds second-order distortion across that range.
     """
 
     idc_envelope: Optional[pd.DataFrame] = None
@@ -72,7 +64,7 @@ class GateEvidence:
 
 
 def fold_stability_gate(evidence: GateEvidence, z_tol: float = 3.0) -> Tuple[bool, str, float, float]:
-    """Gate 7: no validation window may be reproduced materially worse than the rest."""
+    """Grade gate 7: no validation window is reproduced materially worse than the rest."""
     ev = evidence.fold_evidence
     if ev is None or len(ev) == 0:
         return False, "not evaluated: no fold evidence (see evaluate_on_folds)", np.nan, z_tol
@@ -89,14 +81,14 @@ def fold_stability_gate(evidence: GateEvidence, z_tol: float = 3.0) -> Tuple[boo
 
 
 def scaling_drift_gate(evidence: GateEvidence) -> Tuple[bool, str, float, float]:
-    """Gate 8: load scaling must stay linear in rate and bounded in second-order drift.
+    """Grade gate 8: load scaling stays linear in rate and bounded in second-order drift.
 
     Rate linearity is judged against the report's own Monte Carlo error, since
-    a raw relative error at high alpha is dominated by path spread.  IDC / ACF
-    drift and collision risk are judged inside `alpha_range` only: A.2 predicts
-    drift once the latent dominates, so drift outside the declared operating
-    range is a documented property, not a gate failure.  The detail string
-    always reports the full sweep so nothing is hidden by the range.
+    a raw relative error at high alpha is dominated by path spread. IDC/ACF
+    drift and collision risk are judged inside `alpha_range` only: drift is
+    expected once the latent dominates, so drift outside the declared operating
+    range is a documented property rather than a failure. The detail string
+    reports the full sweep regardless.
     """
     rep = evidence.scaling
     if rep is None or len(rep) == 0:
@@ -116,7 +108,7 @@ def scaling_drift_gate(evidence: GateEvidence) -> Tuple[bool, str, float, float]
     se = sub["sd_total"].to_numpy(dtype=float) / np.sqrt(sub["n_paths"].to_numpy(dtype=float))
     z_rate = np.abs(sub["mean_total"].to_numpy(dtype=float) - sub["expected_total"].to_numpy(dtype=float))
     z_rate = z_rate / np.maximum(se, 1e-12)
-    # rate linearity is required over the whole sweep, not only the operating range
+    # rate linearity is required over the whole sweep, not only `alpha_range`
     checks.append(("rate_Z", float(np.nanmax(z_rate)), evidence.rate_z_tol,
                    float(sub["alpha"].to_numpy()[int(np.nanargmax(z_rate))])))
     for base_col, tol in (
@@ -126,7 +118,7 @@ def scaling_drift_gate(evidence: GateEvidence) -> Tuple[bool, str, float, float]
         ("ACF_lag96_drift", evidence.acf_drift_tol),
         ("p_exceed_slots", evidence.collision_tol),
     ):
-        # prefer the path-averaged column: the single-path one is mostly noise
+        # prefer the path-averaged column; the single-path one is mostly noise
         col = f"{base_col}_mean" if f"{base_col}_mean" in band.columns else base_col
         if col not in band.columns:
             continue
@@ -157,8 +149,7 @@ def evaluate_gates(
     stop_at_first_failure: bool = True,
     evidence: Optional[GateEvidence] = None,
 ) -> GateReport:
-    """Gates 1-8 of the guide, in order. Gate 9 (scalar rate calibration) is
-    only unlocked once every structural gate has passed.
+    """Run gates 1-8 in order; the scalar rate calibration unlocks only after all pass.
 
     Gates 7 and 8 are graded from `evidence`; without it they fail as
     unevaluated, so a report can never pass on gates that were never run.

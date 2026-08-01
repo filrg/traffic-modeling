@@ -1,9 +1,4 @@
-"""The methodology rules as executable invariants (guide 1.14).
-
-Metric unit tests run on processes whose IDC and ACF are known in closed form,
-so a failure localises to the metric rather than to the model. A failing test
-here is the specification working, not a test to relax.
-"""
+"""The methodology rules as executable invariants."""
 from __future__ import annotations
 
 import numpy as np
@@ -71,7 +66,7 @@ def test_acf_of_iid_sequence_is_zero():
 
 
 def test_idc_and_acf_match_two_ar_theory():
-    """Known-dependence process: the guide's own eq. (37) and (41)."""
+    """Check IDC and ACF against their closed forms on a known-dependence process."""
     model = NBLatentAR(2)
     sigma = np.array([0.8, 0.5])
     phi = np.array([half_life_to_phi(40.0), half_life_to_phi(3.0)])
@@ -117,7 +112,7 @@ def test_ar1_precision_gives_the_requested_stationary_variance():
 
 
 def test_stationary_initialisation_hits_the_theoretical_mean():
-    """No warm-up, no post-hoc rescaling: the mean must be right on its own."""
+    """Check the mean without warm-up or post-hoc rescaling."""
     model = NBLatentAR(2)
     sigma = np.array([1.1, 0.7])
     model.params_ = {
@@ -132,7 +127,7 @@ def test_stationary_initialisation_hits_the_theoretical_mean():
 
 
 def test_first_bin_is_already_stationary():
-    """The very first bin must have the stationary mean: no burn-in artefact."""
+    """Check that the first bin already carries the stationary mean."""
     model = NBLatentAR(1)
     model.params_ = {
         "mu": np.log(6.0), "mean": 6.0, "sigma": np.array([0.9]),
@@ -146,8 +141,7 @@ def test_first_bin_is_already_stationary():
 
 
 def test_no_pathwise_normalisation():
-    """Independent paths must differ in total count; equal totals would mean
-    the generator secretly rescaled each path."""
+    """Check that path totals vary; equal totals would imply per-path rescaling."""
     model = NBLatentAR(1)
     model.params_ = {
         "mu": np.log(4.0), "mean": 4.0, "sigma": np.array([0.8]),
@@ -260,7 +254,7 @@ def test_build_counts_preserves_zero_bins():
 
 # gate 3: the IDC envelope must be able to carry the scale it grades
 def _persistent_counts(n=96 * 140, seed=41, tau=400.0):
-    """Counts with genuine multi-day persistence, so long-scale IDC is real."""
+    """Return counts with genuine multi-day persistence, so long-scale IDC is real."""
     from seren_countfirst.models import ar1_path, half_life_to_phi, nb2_sample
 
     rng = np.random.default_rng(seed)
@@ -278,7 +272,7 @@ def test_scale_matched_envelope_uses_longer_blocks_for_longer_scales():
 
 
 def test_shared_block_envelope_understates_long_scale_dispersion():
-    """The defect being fixed: 24h blocks cannot carry multi-day dispersion."""
+    """Check that 24h blocks cannot carry multi-day dispersion."""
     x = _persistent_counts(n=96 * 140)
     shared = bootstrap_metric_envelope(x, lambda v: idc_curve(v).add_prefix("IDC_"),
                                        method="stationary_24h", n_rep=40, seed=1)
@@ -290,7 +284,7 @@ def test_shared_block_envelope_understates_long_scale_dispersion():
 
 
 def test_gate3_no_longer_punishes_a_model_that_matches_long_scales():
-    """A synthetic 'model' equal to the trace must not be scored down."""
+    """Check that a synthetic path equal to the trace is not scored down."""
     x = _persistent_counts(n=96 * 140)
     thr = float(np.quantile(x, 0.8))
     env = bootstrap_metric_envelope(x, lambda v: metric_vector(v, thr), method="stationary_24h",
@@ -320,7 +314,7 @@ _MM_ARGS = dict(mean=3.747985, variance=274.206902, zero_fraction=0.774655, acf_
 
 
 def test_second_scale_off_reproduces_the_single_scale_model_exactly():
-    """w_long = 0 must be the old model bit for bit, RNG stream included."""
+    """Check that w_long = 0 reproduces the single-scale model, RNG stream included."""
     model = NBGatedLatent.calibrate(**_MM_ARGS)
     assert model.params_["w_long"] == 0.0
     two_scale = NBGatedLatent.calibrate(**_MM_ARGS, tau_long_bins=500.0, w_long=0.0)
@@ -334,7 +328,7 @@ def test_second_scale_off_reproduces_the_single_scale_model_exactly():
 
 
 def test_second_scale_leaves_the_marginals_alone():
-    """u stays N(0,1), so mean / variance / zero fraction cannot move with w."""
+    """Check that mean, variance and zero fraction do not move with w, since u stays N(0,1)."""
     one = NBGatedLatent.calibrate(**_MM_ARGS)
     two = NBGatedLatent.calibrate(**_MM_ARGS, tau_long_bins=400.0, w_long=0.6)
     for key in ("mean", "variance", "IDC_base", "P_zero"):
@@ -352,7 +346,7 @@ def test_second_scale_carries_persistence_to_long_lags():
 
 
 def test_simulated_two_scale_latent_keeps_unit_variance():
-    """The sqrt(1-w^2)/w mixing is what protects the marginals; check the path."""
+    """Check on a simulated path that the sqrt(1-w^2)/w mixing preserves the marginals."""
     model = NBGatedLatent.calibrate(**_MM_ARGS, tau_long_bins=200.0, w_long=0.5)
     rng = np.random.default_rng(32)
     counts, lam = model.simulate(60_000, rng, return_intensity=True)
@@ -363,7 +357,7 @@ def test_simulated_two_scale_latent_keeps_unit_variance():
 
 
 def test_debiased_calibration_aims_higher_than_the_analytic_one():
-    """Matching at finite length must ask the process for more persistence."""
+    """Check that matching at finite length asks the process for more persistence."""
     targets = {96: 0.19, 192: 0.12, 384: 0.07}
     plain = NBGatedLatent.calibrate(**_MM_ARGS, acf_long=targets)
     debiased = NBGatedLatent.calibrate_debiased(**_MM_ARGS, acf_long=targets, n_bins=6000,
@@ -424,7 +418,7 @@ def test_fold_stability_needs_more_than_one_origin():
 
 
 def test_fold_evidence_separates_a_matched_model_from_a_mis_scaled_one():
-    """The same model at twice the rate must score worse on every window."""
+    """Check that the same model at twice the rate scores worse on every window."""
     cs = _toy_counts(n=96 * 120, seed=21)
     folds = expanding_window_folds(cs, validation_days=14, n_folds=3, min_train_days=30)
     model = IIDNegBin().fit(cs.values)
@@ -439,7 +433,7 @@ def test_fold_evidence_separates_a_matched_model_from_a_mis_scaled_one():
 
 
 def test_short_folds_are_not_graded_on_unsupported_scales():
-    """A 14-day window holds two 7-day blocks: `scale_support` must drop that IDC."""
+    """Check that `scale_support` drops IDC scales a 14-day window cannot carry."""
     cs = _toy_counts(n=96 * 120, seed=22)
     folds = expanding_window_folds(cs, validation_days=14, n_folds=3, min_train_days=30)
     model = IIDNegBin().fit(cs.values)
@@ -454,9 +448,8 @@ def _scaling_frame(**overrides) -> pd.DataFrame:
     for alpha in (0.5, 1.0, 2.0, 4.0, 8.0):
         expected = 1000.0 * alpha
         row = {
-            # track the frozen rule: gate 8 selects the half of the report
-            # matching GateEvidence.kappa_rule, so a hardcoded label here would
-            # break this whole block if the rule were ever refrozen
+            # read the frozen rule rather than hardcoding it: gate 8 selects the
+            # rows matching GateEvidence.kappa_rule
             "kappa_rule": GateEvidence().kappa_rule, "alpha": alpha, "n_paths": 10,
             "expected_total": expected, "mean_total": expected, "sd_total": 0.2 * expected,
             "IDC_15m_drift_log": 0.1, "IDC_1d_drift_log": 0.1,
@@ -480,7 +473,7 @@ def test_scaling_drift_gate_fails_inside_the_operating_range():
 
 
 def test_scaling_drift_outside_the_declared_range_is_documented_not_failed():
-    """A.2 predicts drift once the latent dominates; alpha = 8 is out of range."""
+    """Check that drift beyond the declared operating range is reported, not failed."""
     report = _scaling_frame(IDC_15m_drift_log=lambda a: 3.0 if a == 8.0 else 0.1)
     passed, detail, _, _ = scaling_drift_gate(GateEvidence(scaling=report))
     assert passed, "drift beyond the operating range must not be silently graded"
@@ -496,7 +489,7 @@ def test_scaling_drift_gate_judges_rate_error_against_monte_carlo_noise():
 
 
 def test_scaling_drift_gate_prefers_the_path_averaged_drift():
-    """One path's day-scale IDC is mostly sampling error; the mean is graded."""
+    """Check that the path-averaged drift column is graded, not the single-path one."""
     report = _scaling_frame(IDC_1d_drift_log=lambda a: 2.5 if a == 2.0 else 0.1)
     report["IDC_1d_drift_log_mean"] = 0.2
     passed, detail, ratio, _ = scaling_drift_gate(GateEvidence(scaling=report))
@@ -511,7 +504,7 @@ def test_scaling_drift_gate_refuses_a_report_without_the_error_column():
 
 
 def test_gates_7_and_8_never_pass_without_evidence():
-    """The stub they replace passed unconditionally; absence must now fail."""
+    """Check that gates 7 and 8 fail when their evidence is absent."""
     cs = _toy_counts(n=96 * 60, seed=23)
     model = IIDNegBin().fit(cs.values)
     rng = np.random.default_rng(24)
@@ -527,7 +520,7 @@ def test_gates_7_and_8_never_pass_without_evidence():
     assert not report.passed
 
 
-# appendix A.4: the marginal feasibility result
+# marginal feasibility
 def test_trace_marginals_are_infeasible_for_a_gaussian_log_latent():
     table = marginal_feasibility(mean=3.747985, variance=274.206902, zero_fraction=0.774655, target_acf=0.665)
     assert not table.attrs["feasible"], "no (V, kappa) should satisfy both the zero fraction and the ACF"
@@ -537,7 +530,7 @@ def test_trace_marginals_are_infeasible_for_a_gaussian_log_latent():
 
 
 def test_feasibility_accepts_a_case_that_really_is_feasible():
-    """Guard against a diagnostic that always says 'infeasible'."""
+    """Guard against a diagnostic that always reports infeasible."""
     rng = np.random.default_rng(13)
     model = NBLatentAR(1)
     sigma = np.array([1.0])

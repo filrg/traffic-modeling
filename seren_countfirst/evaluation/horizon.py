@@ -1,4 +1,4 @@
-"""Flexible-horizon evaluation (guide section 1.12)."""
+"""Flexible-horizon evaluation of extensive statistics."""
 from __future__ import annotations
 
 from typing import List, Sequence
@@ -8,7 +8,6 @@ import pandas as pd
 
 from ..metrics import episode_stats, rolling_tails
 
-# flexible-horizon evaluation (guide section 1.12)
 HORIZON_DAYS: tuple = (1, 7, 30, 90, 180)
 
 
@@ -22,11 +21,11 @@ def horizon_distribution(
     seed: int = 0,
     **sim_kwargs,
 ) -> pd.DataFrame:
-    """Distributions of extensive statistics per horizon.
+    """Return the distribution of each extensive statistic per horizon.
 
-    Extensive quantities (totals, maxima, episode counts, longest runs) are
-    only ever compared between windows of equal duration, so the caller must
-    match trace windows to the same horizon.
+    Totals, maxima, episode counts and longest runs are comparable only between
+    windows of equal duration, so the caller must match trace windows to the
+    same horizon.
     """
     rows: List[dict] = []
     for days in horizon_days:

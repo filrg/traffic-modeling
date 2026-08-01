@@ -1,12 +1,4 @@
-"""Numerical baseline: refactoring must not move a single fitted number.
-
-The pins below were captured from the frozen session-2 results before any
-cleanup. `baseline/models_baseline.json` is an immutable snapshot of the
-fitted parameters, so a later pipeline re-run cannot quietly move the target.
-
-A failure here means a change altered simulation, metrics or scaling — not
-that the pins are stale. Update them only with a recorded reason.
-"""
+"""Numerical pins: a refactor must not move a fitted number."""
 from __future__ import annotations
 
 import hashlib
@@ -24,9 +16,10 @@ from seren_countfirst.tools.migrate_state import load_portable_state, rebuild_mo
 
 SEED = 20260729
 SIM_BINS = 4000
+# immutable snapshot: never regenerate it from a fresh pipeline run
 BASELINE = Path(__file__).parent / "baseline" / "models_baseline.json"
 
-#: sha256 prefix of simulate() output, plus total and max, per fitted model
+# sha256 prefix of simulate() output, plus total and max, per fitted model
 SIM_CHECKSUMS = {
     "r2": ("2dc8e955460e4166", 14864.0, 316.0),
     "r3": ("da230c11d360917b", 47018.0, 9300.0),
@@ -35,7 +28,7 @@ SIM_CHECKSUMS = {
     "gated_mm": ("911cb0bdedc9e204", 20236.0, 549.0),
 }
 
-#: published likelihood results (results/benchmark_table.csv, session 2)
+# published likelihood results, as exported to results/benchmark_table.csv
 PUBLISHED_FITS = {
     "r2": (-17350.326982993513, 34704.653965987025, 2),
     "r3": (-13012.282197140079, 26032.564394280158, 4),
@@ -44,11 +37,11 @@ PUBLISHED_FITS = {
 }
 N_OBS = 13272
 
-#: metric_vector over the real trace counts
+# metric_vector over the real trace counts
 TRACE_METRIC_VECTOR_SHA = "fb820b6844aa442a"
 TRACE_METRIC_N = 42
 
-#: quiet-run fingerprint of the real trace (the MMPP-separating texture)
+# quiet-run fingerprint of the real trace
 TRACE_QUIET_RUN = {
     "n_quiet_runs": 687.0,
     "mean_run": 14.965065502183407,
@@ -61,7 +54,7 @@ TRACE_QUIET_RUN = {
     "P_exceed_geoQ99_geometric": 0.01,
 }
 
-#: scaling_report for the frozen winner: alpha -> (mean_total, IDC_15m, ACF_lag1)
+# scaling_report for the frozen winner: alpha -> (mean_total, IDC_15m, ACF_lag1)
 SCALING_BINS = 2000
 SCALING_PINS = {
     1.0: (7204.0, 84.30679425009923, 0.6337010815959208),
@@ -96,7 +89,7 @@ def busy_threshold() -> float:
 
 @pytest.mark.parametrize("key", sorted(SIM_CHECKSUMS))
 def test_simulate_is_bit_for_bit_unchanged(baseline_models, key):
-    """Same params, same seed, same draws — this catches any RNG reordering."""
+    """Check that the same params and seed give the same draws, catching RNG reordering."""
     model = rebuild_model(baseline_models[key])
     path = model.simulate(SIM_BINS, np.random.default_rng(SEED))
     expected_sha, expected_total, expected_max = SIM_CHECKSUMS[key]
@@ -107,7 +100,7 @@ def test_simulate_is_bit_for_bit_unchanged(baseline_models, key):
 
 @pytest.mark.parametrize("key", sorted(PUBLISHED_FITS))
 def test_fit_reports_survive_the_state_round_trip(baseline_models, key):
-    """Rebuilt models must carry their loglik/AIC, or benchmark_table goes blank."""
+    """Check that a rebuilt model still carries its loglik and AIC."""
     report = rebuild_model(baseline_models[key]).report
     loglik, aic, n_params = PUBLISHED_FITS[key]
     assert report is not None, f"{key}: fit report lost on rebuild"
@@ -118,14 +111,14 @@ def test_fit_reports_survive_the_state_round_trip(baseline_models, key):
 
 
 def test_moment_calibrated_winner_has_no_likelihood_fit(baseline_models):
-    """gated_mm is calibrated, not fitted; the model card depends on that."""
+    """Check that gated_mm reports no likelihood, since it is calibrated, not fitted."""
     model = rebuild_model(baseline_models["gated_mm"])
     assert model.report is None
     assert model.name == "nb_gated_mm"
 
 
 def test_trace_metric_vector_unchanged(trace_counts, busy_threshold):
-    """Guards aggregate / idc / acf / run-length / wavelet against refactors."""
+    """Pin aggregate, idc, acf, run-length and wavelet against refactors."""
     mv = metric_vector(trace_counts, busy_threshold)
     assert len(mv) == TRACE_METRIC_N
     assert _sha(mv.to_numpy()) == TRACE_METRIC_VECTOR_SHA
@@ -138,7 +131,7 @@ def test_trace_quiet_run_fingerprint_unchanged(trace_counts):
 
 
 def test_scaling_report_unchanged(baseline_models):
-    """Pins simulate() under load scaling plus the drift/collision columns."""
+    """Pin simulate() under load scaling, plus the drift and collision columns."""
     winner = rebuild_model(baseline_models["gated_mm"])
     report = scaling_report(
         winner, SCALING_BINS, alphas=tuple(SCALING_PINS), n_paths=2,
@@ -152,7 +145,7 @@ def test_scaling_report_unchanged(baseline_models):
 
 
 def test_published_benchmark_table_still_on_disk():
-    """The exported table must keep agreeing with the fits it was built from."""
+    """Check that the exported table still agrees with the fits it was built from."""
     import pandas as pd
 
     path = RESULTS / "benchmark_table.csv"

@@ -1,8 +1,4 @@
-"""Block-bootstrap baselines and trace uncertainty envelopes (guide 1.6).
-
-These baselines are mandatory, and a resample is a reference rather than
-evidence of stationarity.
-"""
+"""Block-bootstrap baselines and trace uncertainty envelopes."""
 from __future__ import annotations
 
 from typing import Callable, Dict, List, Mapping, Sequence
@@ -23,7 +19,7 @@ def moving_block_bootstrap(x: np.ndarray, block: int, rng: np.random.Generator, 
 
 
 def stationary_bootstrap(x: np.ndarray, mean_block: int, rng: np.random.Generator, n_out: int | None = None) -> np.ndarray:
-    """Politis-Romano: geometric block lengths, so the resample is stationary."""
+    """Resample with geometric block lengths, so the resample is stationary."""
     x = np.asarray(x, dtype=float)
     n_out = n_out or len(x)
     p = 1.0 / max(mean_block, 1)
@@ -36,7 +32,7 @@ def stationary_bootstrap(x: np.ndarray, mean_block: int, rng: np.random.Generato
 
 
 def phase_matched_bootstrap(x: np.ndarray, period: int, rng: np.random.Generator, n_out: int | None = None) -> np.ndarray:
-    """Resample whole periods (e.g. days), preserving calendar phase but not multi-day episodes."""
+    """Resample whole periods, preserving calendar phase but not multi-day episodes."""
     x = np.asarray(x, dtype=float)
     n_out = n_out or len(x)
     n_periods = len(x) // period
@@ -48,7 +44,7 @@ def phase_matched_bootstrap(x: np.ndarray, period: int, rng: np.random.Generator
 
 def segment_bootstrap(x: np.ndarray, n_segments: int, block: int, rng: np.random.Generator,
                       n_out: int | None = None) -> np.ndarray:
-    """Bootstrap inside one contiguous activity segment, chosen at random."""
+    """Bootstrap within one contiguous activity segment, chosen at random."""
     x = np.asarray(x, dtype=float)
     segs = np.array_split(x, n_segments)
     seg = segs[int(rng.integers(0, len(segs)))]
@@ -75,11 +71,10 @@ def bootstrap_metric_envelope(
     seed: int = 0,
     n_out: int | None = None,
 ) -> pd.DataFrame:
-    """Median / 2.5% / 97.5% / SE of every metric under a trace-native resample.
+    """Return the median, 2.5%, 97.5% and SE of every metric under a resample.
 
-    The SE column is what normalises the discrepancies in guide eq. (24): a
-    deviation smaller than the trace's own variability must not be scored the
-    same as one far outside it.
+    The SE column normalises the discrepancy scores, so a deviation inside the
+    trace's own variability is not scored like one far outside it.
     """
     rng = np.random.default_rng(seed)
     fn = BOOTSTRAPS[method]
@@ -104,20 +99,18 @@ def scale_matched_idc_envelope(
     n_rep: int = 150,
     seed: int = 0,
 ) -> pd.DataFrame:
-    """IDC envelope per scale, each from blocks long enough to carry that scale.
+    """Return an IDC envelope per scale, each from blocks long enough to carry it.
 
-    A block bootstrap with mean block L reproduces the dispersion at
-    aggregation scale q only while q is well inside L; with one shared 24 h
-    block the resampled IDC collapses toward the one-day value and the envelope
-    at multi-day scales sits far below the trace, which penalises a model for
-    reproducing long-scale dispersion correctly.  Here each scale gets
-    `block_factor * q` bins of block, floored at `min_block_bins` so short
-    scales keep an envelope wide enough for the series' own dependence.
+    A block bootstrap with mean block L reproduces dispersion at aggregation
+    scale q only while q is well inside L. With one shared 24 h block the
+    resampled IDC collapses toward the one-day value, so multi-day envelopes sit
+    far below the trace and penalise a model that reproduces long-scale
+    dispersion. Each scale therefore gets `block_factor * q` bins, floored at
+    `min_block_bins`.
 
-    A scale whose blocks do not fit into the series at least `min_blocks` times
-    is marked unsupported rather than graded: at 138 days a 7-day IDC cannot be
-    given an honest envelope, which is the measurement side of hard rule 8.
-    Scales sharing a block length share one set of resamples.
+    A scale whose blocks do not fit at least `min_blocks` times is marked
+    unsupported rather than graded. Scales sharing a block length share one set
+    of resamples.
     """
     x = np.asarray(x, dtype=float)
     n = len(x)
@@ -154,7 +147,7 @@ def bootstrap_baseline_table(
     x: np.ndarray, metric_fn: Callable[[np.ndarray], pd.Series], methods: Sequence[str] | None = None,
     n_rep: int = 40, seed: int = 0
 ) -> pd.DataFrame:
-    """Phase 1 benchmark table: every bootstrap scored by the shared harness."""
+    """Score every bootstrap method against the trace with the shared metric set."""
     trace = metric_fn(np.asarray(x, dtype=float))
     rows: List[dict] = []
     for method in (methods or list(BOOTSTRAPS)):

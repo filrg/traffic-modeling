@@ -1,9 +1,4 @@
-"""Trace views, the regular count grid, and contiguous splits (guide 1.2, 1.10).
-
-The rules this module enforces: native timezone, no destructive cleaning,
-frozen activity thresholds, and contiguous or rolling-origin splits only —
-never a random K-fold.
-"""
+"""Trace views, the regular count grid, and contiguous splits."""
 from __future__ import annotations
 
 import hashlib
@@ -18,7 +13,7 @@ BASE_FREQ = "15min"
 BASE_BIN_S = 900.0
 SECONDS_PER_DAY = 86400.0
 
-#: aggregation scales expressed in base bins (guide section 1.11, set D)
+# aggregation scales, in base bins
 SCALES: Dict[str, int] = {
     "15m": 1,
     "1h": 4,
@@ -29,7 +24,7 @@ SCALES: Dict[str, int] = {
     "7d": 672,
 }
 
-#: job sizes use completed jobs only; arrivals deliberately keep every state
+# job sizes use completed jobs only; arrivals keep every state
 JOBSIZE_STATES = ("COMPLETED",)
 
 
@@ -41,7 +36,6 @@ def sha256_file(path: str | Path, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
-# raw trace -> semantic views
 def load_trace(csv_path: str | Path) -> pd.DataFrame:
     """Load the raw trace and parse timestamps in their native timezone."""
     raw = pd.read_csv(csv_path, low_memory=False)
@@ -52,10 +46,10 @@ def load_trace(csv_path: str | Path) -> pd.DataFrame:
 
 
 def arrival_view(raw: pd.DataFrame, job_type: str = "SFT") -> pd.DataFrame:
-    """Every valid submission of the target type, stable-sorted.
+    """Return every valid submission of the target type, stable-sorted.
 
-    Failed / cancelled / preempted jobs are submissions the scheduler had to
-    absorb, so they belong to the arrival process.
+    Failed, cancelled and preempted jobs are kept: the scheduler had to absorb
+    them, so they belong to the arrival process.
     """
     view = raw.loc[raw["type"].eq(job_type)].copy()
     view = view.sort_values(["submit_time_dt", "job_id"], kind="stable")
@@ -63,14 +57,14 @@ def arrival_view(raw: pd.DataFrame, job_type: str = "SFT") -> pd.DataFrame:
 
 
 def jobsize_view(raw: pd.DataFrame, job_type: str = "SFT") -> pd.DataFrame:
-    """Completed jobs only: runtimes of other states may be censored."""
+    """Return completed jobs only: runtimes of other states may be censored."""
     view = arrival_view(raw, job_type)
     return view.loc[view["state"].isin(JOBSIZE_STATES)].reset_index(drop=True)
 
 
 @dataclass
 class BatchTable:
-    """Exact-timestamp batches: the atomic arrival unit (guide section 1.2)."""
+    """Exact-timestamp batches: the atomic arrival unit."""
 
     times: pd.DatetimeIndex
     sizes: np.ndarray
@@ -100,7 +94,7 @@ class BatchTable:
 
 
 def build_batches(view: pd.DataFrame, time_col: str = "submit_time_dt") -> BatchTable:
-    """Group jobs sharing an exact timestamp into one batch."""
+    """Group jobs that share an exact timestamp into one batch."""
     grouped = view.groupby(time_col, sort=True).size()
     return BatchTable(times=pd.DatetimeIndex(grouped.index), sizes=grouped.to_numpy(dtype=int))
 
@@ -110,7 +104,6 @@ def zero_iat_fraction(view: pd.DataFrame, time_col: str = "submit_time_dt") -> f
     return float(np.mean(iat == 0)) if len(iat) else np.nan
 
 
-# regular count series
 @dataclass
 class CountSeries:
     """Batch counts on a regular grid. Zero bins are data, not gaps."""
@@ -164,7 +157,7 @@ def build_counts(
     return CountSeries(counts.to_numpy(dtype=float), grid, freq, bin_s)
 
 
-# splits (guide section 1.10): contiguous only, never random K-fold
+# splits are contiguous or rolling-origin only, never random K-fold
 @dataclass
 class Split:
     name: str
@@ -212,7 +205,6 @@ def expanding_window_folds(
     return folds
 
 
-# frozen thresholds / activity classes (guide section 1.8, 1.11)
 @dataclass
 class ActivityScheme:
     """Quantile thresholds learned on training data, then frozen everywhere."""
@@ -250,12 +242,12 @@ class ActivityScheme:
 
 
 def hour_of_week(index: pd.DatetimeIndex) -> np.ndarray:
-    """True hour-of-week phase from timezone-aware stamps (no fallback phase)."""
+    """Return the hour-of-week phase from timezone-aware stamps; no fallback phase."""
     return (index.dayofweek * 24 + index.hour).to_numpy()
 
 
 def segment_profiles(counts: CountSeries, n_segments: int = 3) -> pd.DataFrame:
-    """Normalised hour-of-week profiles per contiguous segment (calendar gate 1)."""
+    """Return normalised hour-of-week profiles, one per contiguous segment."""
     hourly = counts.to_series().resample("1h").sum()
     how = hourly.index.dayofweek * 24 + hourly.index.hour
     frame = pd.DataFrame({"count": hourly.to_numpy(), "how": how})

@@ -11,6 +11,7 @@ from ...paths import RESULTS
 from ..config import FOLD_KWARGS, N_PATHS_EVAL, N_PATHS_FOLD, N_PATHS_SCALING, SEED
 from ..state import _load, _models, _save
 
+
 def stage_scaling() -> None:
     state = _load()
     RESULTS.mkdir(parents=True, exist_ok=True)
@@ -19,9 +20,9 @@ def stage_scaling() -> None:
     rep = scaling_report(model, state["n_bins"], n_paths=N_PATHS_SCALING,
                          busy_threshold=state["busy_threshold"], seed=SEED)
     rep.to_csv(RESULTS / "scaling_report.csv", index=False)
-    # the *_mean columns are the ones gate 8 grades; the single-path ones are
-    # kept in the csv for continuity but are too noisy to read (they show a
-    # non-zero drift at alpha = 1, where the drift is zero by construction)
+    # gate 8 grades the *_mean columns; the single-path ones are kept for
+    # continuity but are too noisy to read, showing drift at alpha = 1 where it
+    # is zero by construction
     cols = ["kappa_rule", "alpha", "rate_error_vs_theory", "IDC_15m",
             "IDC_15m_drift_log_mean", "IDC_1d_drift_log_mean", "ACF_lag1_drift_mean",
             "p_exceed_slots", "max_fill_ratio"]
@@ -32,12 +33,11 @@ def stage_scaling() -> None:
 
 
 def _full_gate_diagnostic(state: dict, name: str, model, scaling: pd.DataFrame) -> None:
-    """Every gate scored for the winner, gate 8 included.
+    """Score every gate for the winner, gate 8 included.
 
-    The sequential verdict in `gates_<winner>.csv` stands: this table runs the
-    later gates even after an earlier failure, so a blocked candidate still
-    shows what its fold stability and scaling drift look like.  It ranks
-    nothing and unlocks nothing.
+    Diagnostic only: it ranks nothing and unlocks nothing. The sequential
+    verdict in `gates_<winner>.csv` stands; this table runs the later gates even
+    after an earlier failure.
     """
     thr, env = state["busy_threshold"], state["envelope"]
     cal = state["trace_marginals"]["mean"] / float(model.params_["mean"])

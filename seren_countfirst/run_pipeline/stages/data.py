@@ -25,6 +25,7 @@ from ...paths import TRACE_CSV
 from ..config import AUDIT, SEED
 from ..state import _save
 
+
 def stage_data() -> None:
     t0 = time.time()
     state = {"trace_sha256": sha256_file(TRACE_CSV)}
@@ -59,7 +60,7 @@ def stage_data() -> None:
     env = bootstrap_metric_envelope(
         counts.values, lambda x: metric_vector(x, thr), method="stationary_24h", n_rep=150, seed=SEED
     )
-    # gate 3 grades IDC per scale against blocks long enough to carry that scale
+    # gate 3 grades IDC per scale against blocks long enough to carry it
     idc_env = scale_matched_idc_envelope(counts.values, n_rep=150, seed=SEED)
     print("scale-matched IDC envelope (gate 3):")
     print(idc_env.assign(trace=idc_curve(counts.values)).round(1).to_string())

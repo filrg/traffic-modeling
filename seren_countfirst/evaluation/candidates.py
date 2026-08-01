@@ -12,8 +12,9 @@ from ..metrics import d_acf, d_idc, d_idc_shape
 from .folds import evaluate_on_folds
 from .gates import GateEvidence, GateReport, evaluate_gates
 
+
 def summary_scores(trace_counts: np.ndarray, syn_paths: Sequence[np.ndarray], busy_threshold: float) -> pd.Series:
-    """Ranking score, only meaningful among candidates that already passed the gates."""
+    """Return the ranking score; meaningful only among candidates that passed the gates."""
     trace = np.asarray(trace_counts, dtype=float)
     return pd.Series(
         {
@@ -45,8 +46,8 @@ def evaluate_candidate(
 ) -> Dict[str, object]:
     """Score one rung of the ladder with the shared harness.
 
-    `folds` and `scaling` supply gates 7 and 8; the same `sim_kwargs` — the
-    global rate calibration included — are used for the fold windows.
+    `folds` and `scaling` supply gates 7 and 8. The fold windows reuse the same
+    `sim_kwargs`, including the global rate calibration.
     """
     rng = np.random.default_rng(seed)
     paths = [model.simulate(len(trace_counts), rng, **sim_kwargs) for _ in range(n_paths)]

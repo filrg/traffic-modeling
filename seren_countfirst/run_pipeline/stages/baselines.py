@@ -7,12 +7,9 @@ from ...paths import RESULTS
 from ..config import SEED
 from ..state import _load, _save
 
-def stage_baselines() -> None:
-    """The mandatory bootstrap yardstick: every resampler scored by the shared harness.
 
-    A model is only interesting where it beats a resampling of the trace itself,
-    so this table is what the candidates are read against.
-    """
+def stage_baselines() -> None:
+    """Score every resampler with the shared harness, giving the candidates a yardstick."""
     state = _load()
     RESULTS.mkdir(parents=True, exist_ok=True)
     counts, thr = state["counts"].values, state["busy_threshold"]

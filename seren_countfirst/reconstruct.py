@@ -1,8 +1,4 @@
-"""Event reconstruction: counts -> batch timestamps -> sizes -> jobs (guide 1.8).
-
-Collisions are reported, never hidden behind a rate calibration, and the
-conservation identities of eq. (15) are asserted rather than assumed.
-"""
+"""Event reconstruction: counts -> batch timestamps -> sizes -> jobs."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -51,13 +47,12 @@ class OffsetTemplates:
 
     def draw(self, n: int, rng: np.random.Generator, bin_seconds: float, label: str | None = None,
              resolution_s: float = 1.0) -> np.ndarray:
-        """n distinct offsets inside a bin, on a grid of step `resolution_s`.
+        """Return n distinct offsets inside a bin, on a grid of step `resolution_s`.
 
-        The empirical pool is at the trace's one-second resolution, so a finer
-        grid samples a second with the empirical shape and then spreads
-        uniformly across that second's sub-cells: the within-bin shape is
-        preserved and only the tie-breaking gets finer.  `resolution_s = 1.0`
-        reproduces the one-second placement exactly, RNG stream included.
+        The empirical pool is at the trace's one-second resolution. A finer grid
+        samples a second with the empirical shape, then spreads uniformly across
+        that second's sub-cells, so only the tie-breaking gets finer.
+        `resolution_s = 1.0` reproduces one-second placement, RNG stream included.
         """
         cells_per_s = int(round(1.0 / resolution_s))
         slots = int(round(bin_seconds)) * cells_per_s
@@ -66,7 +61,7 @@ class OffsetTemplates:
         pool = self.by_class.get(label, self.pooled) if label is not None else self.pooled
         if pool.size == 0:
             return np.sort(rng.choice(slots, size=n, replace=False)).astype(float) * resolution_s
-        # sample with the empirical shape, then repair duplicates without merging
+        # sample with the empirical shape, then drop duplicates without merging
         cand = np.floor(rng.choice(pool, size=min(4 * n + 8, 4 * slots), replace=True)).astype(int)
         if cells_per_s > 1:
             cand = cand * cells_per_s + rng.integers(0, cells_per_s, size=cand.size)
@@ -87,7 +82,7 @@ class OffsetTemplates:
 
 
 def collision_risk(counts: np.ndarray, bin_seconds: float) -> pd.Series:
-    """Pr(N_t > B_delta) and the worst bin, reported at every load factor."""
+    """Return the slot-overflow probability and the worst bin."""
     slots = int(bin_seconds)
     counts = np.asarray(counts, dtype=float)
     over = counts > slots
@@ -115,21 +110,19 @@ def reconstruct_events(
 ) -> ReconstructionResult:
     """Place exactly N_t distinct batch timestamps in every bin.
 
-    The one-second grid is a property of how the trace was *recorded*, not of
-    the workload, so a finer grid recovers resolution the trace quantised away
-    rather than inventing any.  Quantising the result back to whole seconds
-    reproduces the saturated batch counts with inflated sizes, so that reading
-    stays available as a rendering step and needs no separate mechanism.
+    The one-second grid comes from how the trace was recorded, not from the
+    workload, so a finer grid recovers quantised-away resolution. Rounding the
+    result back to whole seconds reproduces the saturated counts with inflated
+    sizes, so that reading remains available as a rendering step.
 
     on_overflow:
-      'auto'      the default: 'raise' at `alpha <= 1`, 'subsecond' above it
+      'auto'      'raise' at `alpha <= 1`, 'subsecond' above it
       'raise'     stop when a bin cannot hold its count; nothing is merged
-      'subsecond' refine *that bin only* to the coarsest grid that fits, so
-                  every other bin keeps whole-second timestamps
+      'subsecond' refine that bin only to the coarsest grid that fits, leaving
+                  every other bin on whole seconds
 
-    `alpha` is declared by the caller rather than inferred, because the counts
-    alone cannot say whether a dense bin is a scaled load or an unusual draw at
-    nominal load.
+    `alpha` is declared by the caller, not inferred: the counts alone cannot
+    distinguish a scaled load from an unusual draw at nominal load.
     """
     counts = np.asarray(counts, dtype=float)
     if on_overflow == "auto":
@@ -152,7 +145,7 @@ def reconstruct_events(
                     f"bin {t} needs {n_t} distinct slots but only {slots} exist; "
                     "widen the bin, use a sub-second grid, or model collisions explicitly"
                 )
-            # coarsest refinement that fits, so resolution degrades only where forced
+            # coarsest refinement that fits: resolution degrades only where forced
             res_t = resolution_s / int(np.ceil(n_t / slots))
             finest_s = min(finest_s, res_t)
         local = offsets.draw(n_t, rng, bin_seconds, label, res_t)
@@ -163,7 +156,7 @@ def reconstruct_events(
     sizes = batch_size_sampler(len(batch_times), rng, classes, counts, bin_seconds, batch_times)
     job_times = np.repeat(batch_times, sizes)
 
-    # guide eq. (15): reconstruction conserves counts exactly
+    # reconstruction conserves counts exactly
     assert len(batch_times) == int(counts.sum()), "batch count not conserved by reconstruction"
     assert len(job_times) == int(np.sum(sizes)), "job count not conserved by reconstruction"
 
@@ -171,13 +164,13 @@ def reconstruct_events(
     report["n_overflow_bins"] = n_overflow_bins
     report["grid_resolution_s"] = float(resolution_s)
     report["finest_resolution_s"] = float(finest_s)
-    # batches that did not land on a whole second: the price of the refinement
+    # batches that did not land on a whole second, i.e. the cost of refinement
     report["n_subsecond_placements"] = int(np.sum(np.mod(batch_times, 1.0) != 0.0))
-    report["export_retention"] = 1.0  # no silent merging: by construction every batch survives
+    report["export_retention"] = 1.0  # every batch survives: nothing is ever merged
     return ReconstructionResult(batch_times, np.asarray(sizes, dtype=int), job_times, counts, report)
 
 
-# batch-size marks (guide eq. 14): iid versus conditional on activity class
+# batch-size marks: iid versus conditional on activity class
 def make_iid_mark_sampler(empirical_sizes: np.ndarray):
     sizes = np.asarray(empirical_sizes, dtype=int)
 
@@ -207,7 +200,7 @@ def make_conditional_mark_sampler(empirical_sizes_by_class: Dict[str, np.ndarray
 
 
 def export_check(result: ReconstructionResult, counts: np.ndarray) -> pd.Series:
-    """Assertions of guide eq. (15) turned into a reportable row."""
+    """Return the batch and job conservation checks as a reportable row."""
     return pd.Series(
         {
             "N_export_batch": result.n_batches,

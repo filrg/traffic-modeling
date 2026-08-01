@@ -9,6 +9,7 @@ from ...paths import RESULTS
 from ..config import N_PATHS_HORIZON, SEED
 from ..state import _load, _models, _save
 
+
 def stage_horizon() -> None:
     state = _load()
     RESULTS.mkdir(parents=True, exist_ok=True)
@@ -16,8 +17,7 @@ def stage_horizon() -> None:
     hz = horizon_distribution(model, n_paths=N_PATHS_HORIZON,
                               busy_threshold=state["busy_threshold"], seed=SEED)
     # a horizon holding fewer than 8 aggregation windows cannot support a
-    # fixed-scale statistic, so say which scales each one can carry rather than
-    # printing day-scale numbers off a one-day window
+    # fixed-scale statistic, so record which scales each one can carry
     support = pd.concat(
         [scale_support(int(d * 96)).assign(horizon_days=d) for d in sorted(hz["horizon_days"].unique())]
     ).reset_index()

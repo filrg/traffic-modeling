@@ -7,7 +7,7 @@ from scipy.optimize import minimize
 from .base import CountModel, FitReport
 from .nb import nb2_loglik, nb2_sample
 
-# rung 2: iid negative binomial
+
 class IIDNegBin(CountModel):
     name = "iid_nb"
     rung = 2

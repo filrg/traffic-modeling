@@ -1,8 +1,4 @@
-"""Benchmark, not a rung: Markov regime-switching level.
-
-Kept for comparison only. The current-paper model carries no discrete regime
-chain; that direction is a separate study.
-"""
+"""Markov regime-switching level: benchmark, not a rung."""
 from __future__ import annotations
 
 from typing import List
@@ -16,22 +12,19 @@ from .base import CountModel, FitReport
 from .latent_ar import NBLatentAR
 from .nb import nb2_sample
 
-# benchmark (not a rung): Markov regime-switching level
 class NBRegimeSwitch(CountModel):
     """Two-state Markov level with NB2 emissions, plus an optional fast AR(1).
 
-    Motivation: on this trace the marginal targets {mean, IDC_15m, zero
-    fraction, ACF} are jointly infeasible for a Gaussian log-latent, and the
-    zero bins arrive in long runs rather than independently, so the quiet
-    state has to be persistent.
+    On this trace the marginal targets {mean, IDC_15m, zero fraction, ACF} are
+    jointly infeasible for a Gaussian log-latent, and zero bins arrive in long
+    runs, so the quiet state must be persistent.
 
-    The optional fast AR(1) is fitted conditionally on the Viterbi regime
-    path.  That is an approximation to the exact switching state-space
-    likelihood and is reported as such in the model card.
+    The optional fast AR(1) is fitted conditionally on the Viterbi regime path,
+    an approximation to the exact switching state-space likelihood.
     """
 
     name = "nb_regime"
-    rung = None  # not a rung of the ladder: MMPP/ON-OFF benchmark only (decision D3)
+    rung = None  # not a rung: discrete regime chains are out of scope here
     role = "benchmark"
 
     def __init__(self, n_states: int = 2, fast_ar: bool = True) -> None:
@@ -40,7 +33,6 @@ class NBRegimeSwitch(CountModel):
         self.fast_ar = fast_ar
         self.name = f"nb_regime{n_states}" + ("_fast" if fast_ar else "")
 
-    # forward / backward
     @staticmethod
     def _emission_loglik(n: np.ndarray, lam_states: np.ndarray, kappa: float) -> np.ndarray:
         n_col = n[:, None]
@@ -181,7 +173,7 @@ class NBRegimeSwitch(CountModel):
         return path
 
     def _fit_fast_ar(self, n: np.ndarray, lam, kappa, P, pi) -> dict:
-        """Conditional Laplace fit of one fast AR(1) given the MAP regime path."""
+        """Fit one fast AR(1) by conditional Laplace, given the MAP regime path."""
         path = self._viterbi(n, lam, kappa, P, pi)
         base = np.log(lam)[path]
         helper = NBLatentAR(n_components=1)

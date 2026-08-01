@@ -1,4 +1,4 @@
-"""Marginal feasibility diagnostic (appendix A.4)."""
+"""Marginal feasibility diagnostic for the Gaussian log-latent NB family."""
 from __future__ import annotations
 
 from typing import Sequence
@@ -6,7 +6,7 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
-# marginal feasibility diagnostic (appendix A.4)
+
 def marginal_feasibility(mean: float, variance: float, zero_fraction: float, target_acf: float,
                          kappa_grid: Sequence[float] | None = None) -> pd.DataFrame:
     """Sweep the constraint e^V (1 + 1/kappa) = C and report what is reachable.
