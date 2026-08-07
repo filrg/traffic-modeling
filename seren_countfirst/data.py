@@ -24,8 +24,8 @@ SCALES: Dict[str, int] = {
     "7d": 672,
 }
 
-# job sizes use completed jobs only; arrivals keep every state
-JOBSIZE_STATES = ("COMPLETED",)
+# A size is the work the cluster absorbed, arrivals keep every state.
+JOBSIZE_STATES = ("COMPLETED", "FAILED", "CANCELLED")
 
 
 def sha256_file(path: str | Path, chunk: int = 1 << 20) -> str:
@@ -57,7 +57,7 @@ def arrival_view(raw: pd.DataFrame, job_type: str = "SFT") -> pd.DataFrame:
 
 
 def jobsize_view(raw: pd.DataFrame, job_type: str = "SFT") -> pd.DataFrame:
-    """Return completed jobs only: runtimes of other states may be censored."""
+    """Return the jobs whose runtime is work the cluster had to absorb."""
     view = arrival_view(raw, job_type)
     return view.loc[view["state"].isin(JOBSIZE_STATES)].reset_index(drop=True)
 

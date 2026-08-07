@@ -12,11 +12,14 @@ USAGE = """usage: python -m seren_countfirst.run_pipeline <stage> [<stage> ...]
     fit <rung> [<rung> ...]   fit or calibrate ladder rungs
     evaluate                  score candidates, pick the winner
     scaling                   load-scaling sweep and the full gate table
+    certify                   the full gate table over CERTIFY_SEEDS seeds
     horizon                   horizon distributions and scale support
     reconstruct               counts -> batch timestamps -> job arrivals
     baselines                 the bootstrap yardstick
     jobsize                   durations -> work units, and the law fitted to them
+    jobsize_folds             the size law on held-out, rolling-origin windows
     export                    freeze the winner into the model card
+    workload                  arrivals x sizes -> a workload, and work under load
 
 Paths come from paths.py and are overridable by SEREN_TRACE_CSV,
 SEREN_RESULTS and SEREN_STATE_DIR.

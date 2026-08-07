@@ -1,6 +1,7 @@
 """Staged, resumable driver for the count-first pipeline."""
 from .config import (
     AUDIT,
+    CERTIFY_SEEDS,
     FOLD_KWARGS,
     LONG_ACF_LAGS,
     MM4_KNOBS,
@@ -14,14 +15,17 @@ from .config import (
     SEED,
 )
 from .stages.baselines import stage_baselines
+from .stages.certify import stage_certify
 from .stages.data import stage_data
 from .stages.evaluate import stage_evaluate
 from .stages.export import stage_export
 from .stages.fit import stage_fit
 from .stages.horizon import stage_horizon
 from .stages.jobsize import stage_jobsize
+from .stages.jobsize_folds import stage_jobsize_folds
 from .stages.reconstruct import stage_reconstruct
 from .stages.scaling import stage_scaling
+from .stages.workload import stage_workload
 
 # stage name -> callable taking the remaining CLI arguments
 STAGES = {
@@ -29,15 +33,19 @@ STAGES = {
     "fit": stage_fit,
     "evaluate": lambda args: stage_evaluate(),
     "scaling": lambda args: stage_scaling(),
+    "certify": lambda args: stage_certify(),
     "horizon": lambda args: stage_horizon(),
     "reconstruct": lambda args: stage_reconstruct(),
     "baselines": lambda args: stage_baselines(),
     "jobsize": lambda args: stage_jobsize(),
+    "jobsize_folds": lambda args: stage_jobsize_folds(),
     "export": lambda args: stage_export(),
+    "workload": lambda args: stage_workload(),
 }
 
 __all__ = [
     "AUDIT",
+    "CERTIFY_SEEDS",
     "FOLD_KWARGS",
     "LONG_ACF_LAGS",
     "MM4_KNOBS",
@@ -51,12 +59,15 @@ __all__ = [
     "SEED",
     "STAGES",
     "stage_baselines",
+    "stage_certify",
     "stage_data",
     "stage_evaluate",
     "stage_export",
     "stage_fit",
     "stage_horizon",
     "stage_jobsize",
+    "stage_jobsize_folds",
     "stage_reconstruct",
     "stage_scaling",
+    "stage_workload",
 ]

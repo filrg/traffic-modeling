@@ -13,6 +13,10 @@ N_PATHS_FOLD = 120         # gate 7, per rolling-origin fold
 N_PATHS_SCALING = 300      # gate 8, per alpha per kappa rule
 N_PATHS_HORIZON = 400      # sized for usable quantiles, not for tight means
 
+# Scoring seeds for the `certify` stage. Per-path CV ~ 0.6 moves a single-seed
+# gate table, so a verdict is quoted as the worst case over these.
+CERTIFY_SEEDS = 10
+
 # CLI name -> state key. Rungs 2-4b, then the benchmarks (`onoff`, `ingarch`)
 # and the ablation (`nogate`); none of the three can win selection.
 RUNG_KEYS = {"r2": "r2", "r3": "r3", "r4": "r4", "gated": "gated", "mm": "gated_mm",
