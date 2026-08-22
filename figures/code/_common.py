@@ -10,15 +10,43 @@ import numpy as np
 import pandas as pd
 
 mpl.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.lines import Line2D  # noqa: E402
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from seren_countfirst.paths import RESULTS, STATE_DIR  # noqa: E402,F401
-from seren_countfirst.ensemble import (  # noqa: E402,F401
-    DISPLAY_CANDIDATES, DISPLAY_OFFSET, PEAK_Q, SEED, BINS_PER_DAY, calibrated,
-    closest_to_trace, daily_peaks, display_pool, redraw, representative, state,
-    winner)
+from seren_countfirst.paths import RESULTS, STATE_DIR
+from seren_countfirst.artifacts import write_csv as atomic_write_csv
+from seren_countfirst.ensemble import (
+    DISPLAY_CANDIDATES,
+    DISPLAY_OFFSET,
+    PEAK_Q,
+    SEED,
+    BINS_PER_DAY,
+    calibrated,
+    closest_to_trace,
+    daily_peaks,
+    display_pool,
+    redraw,
+    representative,
+    state,
+    winner,
+)
+
+__all__ = [
+    "BINS_PER_DAY",
+    "DISPLAY_CANDIDATES",
+    "DISPLAY_OFFSET",
+    "PEAK_Q",
+    "SEED",
+    "calibrated",
+    "closest_to_trace",
+    "daily_peaks",
+    "display_pool",
+    "redraw",
+    "representative",
+    "state",
+    "winner",
+]
 
 # set by `run` from --error-bars / --no-error-bars; None leaves each view on its
 # own default. The csv twin always holds the bounds whether or not they are drawn.
@@ -80,18 +108,25 @@ def show_ci(default: bool) -> bool:
 
 def house_style() -> None:
     """Apply the shared rcParams. Type 42 embeds TrueType rather than Type 3."""
-    plt.rcParams.update({
-        "font.family": "sans-serif",
-        "font.sans-serif": ["DejaVu Sans", "Segoe UI", "Arial"],
-        "font.size": 9,
-        "axes.linewidth": 0.7,
-        "pdf.fonttype": 42,
-        "ps.fonttype": 42,
-    })
+    plt.rcParams.update(
+        {
+            "font.family": "sans-serif",
+            "font.sans-serif": ["DejaVu Sans", "Segoe UI", "Arial"],
+            "font.size": 9,
+            "axes.linewidth": 0.7,
+            "pdf.fonttype": 42,
+            "ps.fonttype": 42,
+        }
+    )
 
 
-def style_axes(ax, grid_axis: str = "both", labelsize: float | None = None,
-               ticklen: float = 3.0, hide_left: bool = False) -> None:
+def style_axes(
+    ax,
+    grid_axis: str = "both",
+    labelsize: float | None = None,
+    ticklen: float = 3.0,
+    hide_left: bool = False,
+) -> None:
     """Apply the shared grid, spine and tick treatment to one axis."""
     ax.grid(True, axis=grid_axis, which="major", color=GRID, linewidth=0.6, zorder=0)
     ax.set_axisbelow(True)
@@ -119,33 +154,52 @@ def frame_legend(leg):
     return leg
 
 
-def stroke_legend(ax, entries, loc, fontsize: float = 6.5, labelspacing: float = 0.28,
-                  handlelength: float = 2.6, borderpad: float = 0.45):
+def stroke_legend(
+    ax,
+    entries,
+    loc,
+    fontsize: float = 6.5,
+    labelspacing: float = 0.28,
+    handlelength: float = 2.6,
+    borderpad: float = 0.45,
+):
     """Draw a legend whose handles are bare strokes matching each curve's style.
 
     The handles are proxies rather than the plotted artists, and are lengthened
     to hold two full dash periods.
     """
     handles = [Line2D([], [], color=c, linewidth=lw, linestyle=ls) for _, c, lw, ls in entries]
-    return frame_legend(ax.legend(
-        handles, [label for label, _, _, _ in entries], loc=loc, frameon=True,
-        framealpha=1.0, fontsize=fontsize, handlelength=handlelength,
-        labelspacing=labelspacing, borderpad=borderpad))
+    return frame_legend(
+        ax.legend(
+            handles,
+            [label for label, _, _, _ in entries],
+            loc=loc,
+            frameon=True,
+            framealpha=1.0,
+            fontsize=fontsize,
+            handlelength=handlelength,
+            labelspacing=labelspacing,
+            borderpad=borderpad,
+        )
+    )
 
 
 def model_legend(ax, loc, trace_lw: float = 1.5, model_lw: float = 1.3, **kw):
     """Draw the standard trace-plus-four-models stroke legend."""
-    return stroke_legend(ax, [("Trace", INK, trace_lw, "-")]
-                         + [(label, color, model_lw, MODEL_DASH) for _, label, color in SERIES],
-                         loc=loc, **kw)
+    return stroke_legend(
+        ax,
+        [("Trace", INK, trace_lw, "-")]
+        + [(label, color, model_lw, MODEL_DASH) for _, label, color in SERIES],
+        loc=loc,
+        **kw,
+    )
 
 
 def save(fig, name: str) -> None:
     """Write `name`.pdf and `name`.png into the figure tree."""
     for ext in ("pdf", "png"):
         (OUT / ext).mkdir(parents=True, exist_ok=True)
-        fig.savefig(OUT / ext / f"{name}.{ext}", dpi=300, bbox_inches="tight",
-                    facecolor="white")
+        fig.savefig(OUT / ext / f"{name}.{ext}", dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     print("wrote", OUT / "pdf" / f"{name}.pdf", "and .png")
 
@@ -153,7 +207,7 @@ def save(fig, name: str) -> None:
 def write_csv(df: pd.DataFrame, name: str, index: bool = True) -> None:
     """Write the figure's csv twin."""
     (OUT / "csv").mkdir(parents=True, exist_ok=True)
-    df.to_csv(OUT / "csv" / f"{name}.csv", index=index)
+    atomic_write_csv(df, OUT / "csv" / f"{name}.csv", index=index)
 
 
 def series_paths(st: dict, n_paths: int, seed_offset: int = 1) -> dict:
@@ -171,21 +225,39 @@ def series_paths(st: dict, n_paths: int, seed_offset: int = 1) -> dict:
     return out
 
 
-def run(views: Mapping[str, Callable[[], None]], default: str, description: str,
-        inputs: Sequence[str] = ()) -> None:
+def run(
+    views: Mapping[str, Callable[[], None]],
+    default: str,
+    description: str,
+    inputs: Sequence[str] = (),
+) -> None:
     """Parse `--style` / `--all` / `--list` / `--check` and run the selected views."""
     ap = argparse.ArgumentParser(description=description)
-    ap.add_argument("--style", choices=list(views), default=default,
-                    help=f"which view to render (default: {default})")
+    ap.add_argument(
+        "--style",
+        choices=list(views),
+        default=default,
+        help=f"which view to render (default: {default})",
+    )
     ap.add_argument("--all", action="store_true", help="render every view")
     ap.add_argument("--list", action="store_true", help="list the views and exit")
-    ap.add_argument("--check", action="store_true",
-                    help="report whether this module's inputs exist, and exit")
-    ap.add_argument("--error-bars", dest="error_bars", action="store_true", default=None,
-                    help="draw the measurement's confidence intervals in every view "
-                         "that has them, overriding the view's own default")
-    ap.add_argument("--no-error-bars", dest="error_bars", action="store_false",
-                    help="hide them in every view, likewise")
+    ap.add_argument(
+        "--check", action="store_true", help="report whether this module's inputs exist, and exit"
+    )
+    ap.add_argument(
+        "--error-bars",
+        dest="error_bars",
+        action="store_true",
+        default=None,
+        help="draw the measurement's confidence intervals in every view "
+        "that has them, overriding the view's own default",
+    )
+    ap.add_argument(
+        "--no-error-bars",
+        dest="error_bars",
+        action="store_false",
+        help="hide them in every view, likewise",
+    )
     args = ap.parse_args()
 
     global SHOW_CI

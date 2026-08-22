@@ -67,8 +67,11 @@ class ONOFFCounts(CountModel):
 
         model = cls(emission=emission)
         model.params_ = {
-            "p01": p01, "p10": p10, "pi_on": float(pi_on),
-            "lambda_on": float(lam_on), "kappa": float(kappa),
+            "p01": p01,
+            "p10": p10,
+            "pi_on": float(pi_on),
+            "lambda_on": float(lam_on),
+            "kappa": float(kappa),
             "mean": float(pi_on * lam_on),
             "mean_off_run_bins": float(1.0 / p01),
             "mean_on_run_bins": float(1.0 / p10),
@@ -110,8 +113,15 @@ class ONOFFCounts(CountModel):
             }
         )
 
-    def simulate(self, n_bins: int, rng: np.random.Generator, alpha: float = 1.0,
-                 kappa_rule: str = "proportional", return_intensity: bool = False, **kwargs):
+    def simulate(
+        self,
+        n_bins: int,
+        rng: np.random.Generator,
+        alpha: float = 1.0,
+        kappa_rule: str = "proportional",
+        return_intensity: bool = False,
+        **kwargs,
+    ):
         p = self.params_
         p01, p10 = p["p01"], p["p10"]
         pi_on = p["pi_on"]
@@ -122,8 +132,11 @@ class ONOFFCounts(CountModel):
             state[t] = (u[t] >= p10) if state[t - 1] else (u[t] < p01)
         lam = np.where(state, alpha * p["lambda_on"], 0.0)
         if np.isfinite(p["kappa"]):
-            counts = np.where(state, nb2_sample(np.maximum(lam, _EPS),
-                                                self.scaled_kappa(alpha, kappa_rule), rng), 0.0)
+            counts = np.where(
+                state,
+                nb2_sample(np.maximum(lam, _EPS), self.scaled_kappa(alpha, kappa_rule), rng),
+                0.0,
+            )
         else:
             counts = np.where(state, rng.poisson(lam), 0.0)
         counts = counts.astype(float)

@@ -1,6 +1,6 @@
 # The environment the published results/ and figures/ were produced in.
 # requirements.txt and pyproject.toml carry the floors; this carries the pins.
-python==3.14.6
+# Python runtime used for the published artifacts: 3.14.6
 numpy==2.5.1
 scipy==1.18.0
 pandas==3.0.3

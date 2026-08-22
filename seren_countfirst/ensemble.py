@@ -52,8 +52,9 @@ def _profiles(pool) -> tuple:
 
 def _rank(peaks, acf, ref_peaks, ref_acf) -> np.ndarray:
     """Distance to a reference profile; +1 on the quantiles only, an acf is never zero."""
-    return (np.abs(np.log((peaks + 1.0) / (ref_peaks + 1.0))).sum(axis=1)
-            + np.abs(np.log(acf / ref_acf)))
+    return np.abs(np.log((peaks + 1.0) / (ref_peaks + 1.0))).sum(axis=1) + np.abs(
+        np.log(acf / ref_acf)
+    )
 
 
 def _at_volume(runs: list, target_mean: float, tol: float) -> list:
@@ -61,8 +62,9 @@ def _at_volume(runs: list, target_mean: float, tol: float) -> list:
     return [i for i, r in enumerate(runs) if abs(r.mean() / target_mean - 1.0) <= tol]
 
 
-def closest_to_trace(runs: list, trace: np.ndarray, target_mean: float | None = None,
-                     tol: float = 0.20) -> int:
+def closest_to_trace(
+    runs: list, trace: np.ndarray, target_mean: float | None = None, tol: float = 0.20
+) -> int:
     """Return the index of the run nearest the trace on `representative`'s profile.
 
     Selects *on the trace*, so it may be applied to a baseline only while the
@@ -76,8 +78,7 @@ def closest_to_trace(runs: list, trace: np.ndarray, target_mean: float | None = 
     return idx[int(np.argmin(_rank(peaks, acf, ref_p[0], ref_a[0])))]
 
 
-def representative(runs: list, target_mean: float | None = None,
-                   tol: float = 0.20) -> int:
+def representative(runs: list, target_mean: float | None = None, tol: float = 0.20) -> int:
     """Return the index of the run closest to the ensemble's own median profile.
 
     The profile is the daily-peak quantiles plus the hourly lag-one
@@ -88,10 +89,10 @@ def representative(runs: list, target_mean: float | None = None,
     `target_mean` restricts the pick to runs carrying that volume. `tol` is
     loose: it guards a gross mismatch, not a near one.
     """
+
     def closest(idx):
         peaks, acf = _profiles([runs[i] for i in idx])
-        return idx[int(np.argmin(_rank(peaks, acf, np.median(peaks, axis=0),
-                                       np.median(acf))))]
+        return idx[int(np.argmin(_rank(peaks, acf, np.median(peaks, axis=0), np.median(acf))))]
 
     chosen = closest(list(range(len(runs))))
     if target_mean is None or abs(runs[chosen].mean() / target_mean - 1.0) <= tol:
@@ -100,8 +101,9 @@ def representative(runs: list, target_mean: float | None = None,
     return closest(keep) if keep else chosen
 
 
-def display_pool(model, cal: float, n_bins: int,
-                 n_paths: int = DISPLAY_CANDIDATES) -> tuple[list, list]:
+def display_pool(
+    model, cal: float, n_bins: int, n_paths: int = DISPLAY_CANDIDATES
+) -> tuple[list, list]:
     """Draw the shared display ensemble, with the stream state preceding each run.
 
     The draws are `series_paths`'s for one model. Snapshotting consumes nothing,

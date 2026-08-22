@@ -22,13 +22,23 @@ def scale_support(n_bins: int) -> pd.DataFrame:
         }
     ).set_index("scale")
 
+
 # metrics graded per fold; unsupported IDC scales are dropped via `scale_support`
 FOLD_CORE_METRICS: tuple[str, ...] = (
     "mean",
     "zero_bin_fraction",
-    "IDC_15m", "IDC_1h", "IDC_6h", "IDC_1d", "IDC_2d", "IDC_4d", "IDC_7d",
-    "ACF_lag1", "ACF_lag4", "ACF_lag96",
-    "busy_run_mean", "quiet_run_q95",
+    "IDC_15m",
+    "IDC_1h",
+    "IDC_6h",
+    "IDC_1d",
+    "IDC_2d",
+    "IDC_4d",
+    "IDC_7d",
+    "ACF_lag1",
+    "ACF_lag4",
+    "ACF_lag96",
+    "busy_run_mean",
+    "quiet_run_q95",
 )
 
 
@@ -69,15 +79,18 @@ def evaluate_on_folds(
         syn, syn_sd = syn_frame.mean(), syn_frame.std(ddof=1)
         obs = metric_vector(val, busy_threshold)
         env = bootstrap_metric_envelope(
-            val, lambda x: metric_vector(x, busy_threshold), method=boot_method,
-            n_rep=boot_rep, seed=seed + k,
+            val,
+            lambda x: metric_vector(x, busy_threshold),
+            method=boot_method,
+            n_rep=boot_rep,
+            seed=seed + k,
         )
         for name in keep:
             if name not in obs.index or name not in syn.index:
                 continue
             boot_se = float(env["se"].get(name, np.nan))
             path_sd = float(syn_sd.get(name, np.nan))
-            joint = np.sqrt(np.nansum([boot_se ** 2, path_sd ** 2]))
+            joint = np.sqrt(np.nansum([boot_se**2, path_sd**2]))
             eps = 1e-3 * max(abs(float(obs[name])), 1.0)
             rows.append(
                 {

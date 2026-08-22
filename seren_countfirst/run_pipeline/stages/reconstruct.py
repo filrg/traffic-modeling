@@ -1,164 +1,288 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from ...data import ActivityScheme
+from ...data import ActivityScheme, CountSeries
+from ...artifacts import write_csv
 from ...metrics import microstructure
-from ...reconstruct import (
-    collision_risk, export_check, make_conditional_mark_sampler, make_iid_mark_sampler,
-    OffsetTemplates, PatternTemplates, reconstruct_events)
+from ...models import CountModel
 from ...paths import RESULTS
-from ..config import N_PATHS_RECONSTRUCT, RECONSTRUCT_ALPHAS, SEED
+from ...reconstruct import (
+    OffsetTemplates,
+    PatternTemplates,
+    collision_risk,
+    export_check,
+    make_conditional_mark_sampler,
+    make_iid_mark_sampler,
+    reconstruct_events,
+)
+from ...state import PipelineState
+from ..config import N_PATHS_RECONSTRUCT, RECONSTRUCT_ALPHAS
+from ..randomness import SeedStream, generator
 from ..state import fitted_models, load_state, save_state
 
+_MICROSTRUCTURE_STATS = (
+    "zero_iat_fraction",
+    "positive_gap_median_s",
+    "positive_gap_q99_s",
+    "zero_bin_fraction",
+)
 
-def _trace_events(state: dict) -> tuple:
-    """Return trace batch times in seconds from the first bin edge, with sizes and classes."""
+
+@dataclass(frozen=True)
+class ReconstructionInputs:
+    state: PipelineState
+    counts: CountSeries
+    model: CountModel
+    calibration: float
+    bin_seconds: float
+    times_s: np.ndarray
+    sizes: np.ndarray
+    scheme: ActivityScheme
+    placements: dict[str, Any]
+    samplers: dict[str, Any]
+    synthetic_paths: list[np.ndarray]
+    trace_microstructure: pd.Series
+
+
+def _trace_events(
+    state: PipelineState,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, ActivityScheme]:
     counts = state["counts"]
     origin = counts.index[0]
-    times_s = (pd.DatetimeIndex(state["batch_times"]) - origin).total_seconds().to_numpy(dtype=float)
+    times_s = (
+        (pd.DatetimeIndex(state["batch_times"]) - origin).total_seconds().to_numpy(dtype=float)
+    )
     sizes = np.asarray(state["batches_sizes"], dtype=int)
-    scheme = state["scheme"]
-    if isinstance(scheme, dict):
-        scheme = ActivityScheme(edges=tuple(scheme["edges"]), labels=tuple(scheme["labels"]),
-                                busy_threshold=scheme["busy_threshold"],
-                                quiet_threshold=scheme["quiet_threshold"], source=scheme["source"])
+    raw_scheme = state["scheme"]
+    scheme = ActivityScheme.from_dict(raw_scheme) if isinstance(raw_scheme, dict) else raw_scheme
     return times_s, sizes, scheme.classify(counts.values), scheme
 
 
-def stage_reconstruct() -> None:
-    """Reconstruct events and score them against the trace's microstructure.
-
-    This layer decides where inside a bin the batches land, which produces the
-    zero-inter-arrival structure. Reported, not gated.
-    """
+def _load_inputs() -> ReconstructionInputs:
     state = load_state()
-    RESULTS.mkdir(parents=True, exist_ok=True)
     counts = state["counts"]
-    bin_s = float(counts.bin_seconds)
+    bin_seconds = float(counts.bin_seconds)
     model = fitted_models(state)[state.get("winner", "gated_mm")]
-    cal = state["trace_marginals"]["mean"] / float(model.params_["mean"])
-
+    calibration = state["trace_marginals"]["mean"] / float(model.params_["mean"])
     times_s, sizes, trace_classes, scheme = _trace_events(state)
-    # placement laws: whole observed patterns by occupancy, against the independent
-    # offsets they replaced. 94% of gaps are within-bin, so this layer owns the gap
-    # marginal; the iid arm stays as the recorded negative
-    placements = {
-        "pattern": PatternTemplates.from_trace(times_s, bin_s, counts.values,
-                                               classes=trace_classes),
-        "iid_offsets": OffsetTemplates.from_trace(times_s, bin_s, counts.values,
-                                                  classes=trace_classes),
-    }
-    templates = placements["pattern"]
-    trace_jobs = np.repeat(times_s, sizes)
-    trace_micro = microstructure(trace_jobs, times_s, counts.values)
-    print("trace microstructure:", {k: round(float(v), 4) for k, v in trace_micro.items()})
 
-    # the two mark samplers, compared as an ablation
-    by_class = {str(lab): sizes[trace_classes[np.clip((times_s // bin_s).astype(int), 0,
-                                                      len(trace_classes) - 1)] == lab]
-                for lab in np.unique(trace_classes)}
+    placements = {
+        "pattern": PatternTemplates.from_trace(
+            times_s, bin_seconds, counts.values, classes=trace_classes
+        ),
+        "iid_offsets": OffsetTemplates.from_trace(
+            times_s, bin_seconds, counts.values, classes=trace_classes
+        ),
+    }
+    bin_index = np.clip((times_s // bin_seconds).astype(int), 0, len(trace_classes) - 1)
+    by_class = {
+        str(label): sizes[trace_classes[bin_index] == label] for label in np.unique(trace_classes)
+    }
     samplers = {
         "iid": make_iid_mark_sampler(sizes),
         "conditional": make_conditional_mark_sampler(by_class, fallback=sizes),
     }
+    path_rng = generator(SeedStream.RECONSTRUCTION_POOL)
+    synthetic_paths = [
+        model.simulate(len(counts), path_rng, alpha=calibration) for _ in range(N_PATHS_RECONSTRUCT)
+    ]
+    trace_jobs = np.repeat(times_s, sizes)
+    trace_microstructure = microstructure(trace_jobs, times_s, counts.values)
+    return ReconstructionInputs(
+        state,
+        counts,
+        model,
+        calibration,
+        bin_seconds,
+        times_s,
+        sizes,
+        scheme,
+        placements,
+        samplers,
+        synthetic_paths,
+        trace_microstructure,
+    )
 
-    # count paths are drawn once and shared: a mark sampler consumes randomness,
-    # so a shared stream would put the two arms on different count paths
-    path_rng = np.random.default_rng(SEED + 3)
-    syn_paths = [model.simulate(len(counts), path_rng, alpha=cal)
-                 for _ in range(N_PATHS_RECONSTRUCT)]
 
+def _score_microstructure(
+    inputs: ReconstructionInputs,
+) -> tuple[pd.DataFrame, pd.DataFrame, int]:
     rows, checks, overflow = [], [], 0
-    for place, offsets in placements.items():
-        for label, sampler in samplers.items():
-            for rep, syn in enumerate(syn_paths):
-                rng = np.random.default_rng(SEED + 5000 + rep)
+    for placement, offsets in inputs.placements.items():
+        for marks, sampler in inputs.samplers.items():
+            for replicate, counts in enumerate(inputs.synthetic_paths):
+                rng = generator(SeedStream.RECONSTRUCTION_MARKS, replicate)
                 try:
-                    # thresholds stay frozen from the training interval
-                    res = reconstruct_events(syn, bin_s, rng, sampler, offsets=offsets,
-                                             classes=scheme.classify(syn))
+                    reconstructed = reconstruct_events(
+                        counts,
+                        inputs.bin_seconds,
+                        rng,
+                        sampler,
+                        offsets=offsets,
+                        classes=inputs.scheme.classify(counts),
+                    )
                 except ValueError:
-                    # an overflowing bin is counted, never merged away
                     overflow += 1
                     continue
-                tag = {"placement": place, "marks": label, "replicate": rep}
-                rows.append({**tag, "n_batches": res.n_batches,
-                             **microstructure(res.job_times_s, res.batch_times_s, syn).to_dict()})
-                checks.append({**tag, **export_check(res, syn).to_dict()})
-    if overflow:
-        n_runs = len(placements) * len(samplers) * N_PATHS_RECONSTRUCT
-        print(f"note: {overflow} of {n_runs} paths overflowed the "
-              f"{int(bin_s)}-slot grid at alpha = 1 and are excluded from the microstructure "
-              f"summary (trace max bin 530; the model's tail runs past it)")
-    per_path = pd.DataFrame(rows)
-    check_df = pd.DataFrame(checks)
-    per_path.to_csv(RESULTS / "microstructure_paths.csv", index=False)
-    check_df.to_csv(RESULTS / "export_check.csv", index=False)
+                tag = {
+                    "placement": placement,
+                    "marks": marks,
+                    "replicate": replicate,
+                }
+                rows.append(
+                    {
+                        **tag,
+                        "n_batches": reconstructed.n_batches,
+                        **microstructure(
+                            reconstructed.job_times_s,
+                            reconstructed.batch_times_s,
+                            counts,
+                        ).to_dict(),
+                    }
+                )
+                checks.append({**tag, **export_check(reconstructed, counts).to_dict()})
+    return pd.DataFrame(rows), pd.DataFrame(checks), overflow
 
-    stats = ["zero_iat_fraction", "positive_gap_median_s", "positive_gap_q99_s", "zero_bin_fraction"]
-    summary = per_path.groupby(["placement", "marks"])[stats + ["n_batches"]].agg(["mean", "std"])
-    micro_df = pd.concat([
-        pd.DataFrame([{"placement": "TRACE", "marks": "TRACE", **trace_micro.to_dict(),
-                       "n_batches": len(times_s)}]),
-        summary.xs("mean", axis=1, level=1).reset_index(),
-    ], ignore_index=True)
-    micro_df.to_csv(RESULTS / "microstructure.csv", index=False)
 
-    conserved = check_df[["batch_conserved", "job_conserved", "distinct_timestamps"]].all().all()
-    print(f"\nconservation over {len(check_df)} reconstructions: "
-          f"{'ok — every batch survives, every timestamp distinct' if conserved else 'FAILED'}")
-    print(f"\nmicrostructure, trace vs reconstruction (mean over {N_PATHS_RECONSTRUCT} paths):")
-    print(micro_df.round(4).to_string(index=False))
-    print("\nper-path spread (sd):")
-    print(summary.xs("std", axis=1, level=1).round(4).to_string())
+def _summarize_microstructure(
+    inputs: ReconstructionInputs,
+    per_path: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    summary = per_path.groupby(["placement", "marks"])[[*_MICROSTRUCTURE_STATS, "n_batches"]].agg(
+        ["mean", "std"]
+    )
+    combined = pd.concat(
+        [
+            pd.DataFrame(
+                [
+                    {
+                        "placement": "TRACE",
+                        "marks": "TRACE",
+                        **inputs.trace_microstructure.to_dict(),
+                        "n_batches": len(inputs.times_s),
+                    }
+                ]
+            ),
+            summary.xs("mean", axis=1, level=1).reset_index(),
+        ],
+        ignore_index=True,
+    )
+    return combined, summary
 
-    # export grid by load factor, scored both ways: strict whole-second placement,
-    # which raises rather than merges, and the adaptive sub-second grid, which
-    # refines only the bins that cannot fit
-    grid = []
+
+def _load_grid(inputs: ReconstructionInputs) -> pd.DataFrame:
+    rows = []
+    templates = inputs.placements["pattern"]
+    sampler = inputs.samplers["iid"]
     for alpha in RECONSTRUCT_ALPHAS:
-        path_rng = np.random.default_rng(SEED + 4)
-        risks, strict_ok, sub = [], [], []
+        path_rng = generator(SeedStream.LOAD_PATH)
+        risks, strict_ok, subsecond = [], [], []
         for _ in range(N_PATHS_RECONSTRUCT):
-            syn = model.simulate(len(counts), path_rng, alpha=cal * alpha)
-            risks.append(collision_risk(syn, bin_s))
+            counts = inputs.model.simulate(
+                len(inputs.counts),
+                path_rng,
+                alpha=inputs.calibration * alpha,
+            )
+            risks.append(collision_risk(counts, inputs.bin_seconds))
             try:
-                # forced strict, to measure what the whole-second grid alone can do
-                reconstruct_events(syn, bin_s, np.random.default_rng(SEED + 6),
-                                   samplers["iid"], offsets=templates, on_overflow="raise")
+                reconstruct_events(
+                    counts,
+                    inputs.bin_seconds,
+                    generator(SeedStream.PLACEMENT_CHECK),
+                    sampler,
+                    offsets=templates,
+                    on_overflow="raise",
+                )
                 strict_ok.append(True)
             except ValueError:
                 strict_ok.append(False)
-            # 'auto' resolves to subsecond above alpha = 1 and stays strict at or
-            # below it, so this arm can still refuse at alpha <= 1
             try:
-                res = reconstruct_events(syn, bin_s, np.random.default_rng(SEED + 6),
-                                         samplers["iid"], offsets=templates, alpha=alpha)
-                sub.append(res.collision_report.to_dict() | {"n_batches": res.n_batches, "ok": 1.0})
+                reconstructed = reconstruct_events(
+                    counts,
+                    inputs.bin_seconds,
+                    generator(SeedStream.PLACEMENT_CHECK),
+                    sampler,
+                    offsets=templates,
+                    alpha=alpha,
+                )
+                subsecond.append(
+                    reconstructed.collision_report.to_dict()
+                    | {"n_batches": reconstructed.n_batches, "ok": 1.0}
+                )
             except ValueError:
-                sub.append({"n_overflow_bins": np.nan, "finest_resolution_s": np.nan,
-                            "n_subsecond_placements": np.nan, "n_batches": np.nan, "ok": 0.0})
-        risk, subs = pd.DataFrame(risks).mean(), pd.DataFrame(sub)
-        grid.append({
-            "alpha": alpha,
-            "strict_1s_paths_ok": float(np.mean(strict_ok)),
-            "default_paths_ok": float(subs["ok"].mean()),
-            "mean_max_count": risk["max_count"],
-            "mean_max_fill_ratio": risk["max_fill_ratio"],
-            "mean_refined_bins": subs["n_overflow_bins"].mean(),
-            "finest_resolution_s": subs["finest_resolution_s"].min(),
-            "frac_batches_off_whole_second":
-                float(subs["n_subsecond_placements"].sum() / subs["n_batches"].sum()),
-        })
-    grid_df = pd.DataFrame(grid)
-    grid_df.to_csv(RESULTS / "reconstruction_by_alpha.csv", index=False)
-    print(f"\nexport grid by load factor ({N_PATHS_RECONSTRUCT} paths each; strict = whole "
-          f"seconds only, {int(bin_s)} slots per bin):")
-    print(grid_df.round(4).to_string(index=False))
+                subsecond.append(
+                    {
+                        "n_overflow_bins": np.nan,
+                        "finest_resolution_s": np.nan,
+                        "n_subsecond_placements": np.nan,
+                        "n_batches": np.nan,
+                        "ok": 0.0,
+                    }
+                )
+        risk = pd.DataFrame(risks).mean()
+        subsecond_frame = pd.DataFrame(subsecond)
+        rows.append(
+            {
+                "alpha": alpha,
+                "strict_1s_paths_ok": float(np.mean(strict_ok)),
+                "default_paths_ok": float(subsecond_frame["ok"].mean()),
+                "mean_max_count": risk["max_count"],
+                "mean_max_fill_ratio": risk["max_fill_ratio"],
+                "mean_refined_bins": subsecond_frame["n_overflow_bins"].mean(),
+                "finest_resolution_s": subsecond_frame["finest_resolution_s"].min(),
+                "frac_batches_off_whole_second": float(
+                    subsecond_frame["n_subsecond_placements"].sum()
+                    / subsecond_frame["n_batches"].sum()
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
 
-    state["microstructure"] = micro_df
-    state["reconstruction_by_alpha"] = grid_df
-    save_state(state)
+
+def stage_reconstruct() -> None:
+    """Reconstruct events and report placement microstructure."""
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    inputs = _load_inputs()
+    print(
+        "trace microstructure:",
+        {key: round(float(value), 4) for key, value in inputs.trace_microstructure.items()},
+    )
+
+    per_path, checks, overflow = _score_microstructure(inputs)
+    if overflow:
+        total = len(inputs.placements) * len(inputs.samplers) * N_PATHS_RECONSTRUCT
+        print(
+            f"note: {overflow} of {total} paths overflowed the "
+            f"{int(inputs.bin_seconds)}-slot grid at alpha = 1 and are excluded from the "
+            "microstructure summary (trace max bin 530; the model's tail runs past it)"
+        )
+    microstructure_frame, summary = _summarize_microstructure(inputs, per_path)
+    write_csv(per_path, RESULTS / "microstructure_paths.csv", index=False)
+    write_csv(checks, RESULTS / "export_check.csv", index=False)
+    write_csv(microstructure_frame, RESULTS / "microstructure.csv", index=False)
+
+    conserved = checks[["batch_conserved", "job_conserved", "distinct_timestamps"]].all().all()
+    print(
+        f"\nconservation over {len(checks)} reconstructions: "
+        f"{'ok — every batch survives, every timestamp distinct' if conserved else 'FAILED'}"
+    )
+    print(f"\nmicrostructure, trace vs reconstruction (mean over {N_PATHS_RECONSTRUCT} paths):")
+    print(microstructure_frame.round(4).to_string(index=False))
+    print("\nper-path spread (sd):")
+    print(summary.xs("std", axis=1, level=1).round(4).to_string())
+
+    grid = _load_grid(inputs)
+    write_csv(grid, RESULTS / "reconstruction_by_alpha.csv", index=False)
+    print(
+        f"\nexport grid by load factor ({N_PATHS_RECONSTRUCT} paths each; strict = whole "
+        f"seconds only, {int(inputs.bin_seconds)} slots per bin):"
+    )
+    print(grid.round(4).to_string(index=False))
+    inputs.state["microstructure"] = microstructure_frame
+    inputs.state["reconstruction_by_alpha"] = grid
+    save_state(inputs.state)

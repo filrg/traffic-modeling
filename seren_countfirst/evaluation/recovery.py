@@ -34,7 +34,9 @@ def parameter_recovery(
                         "parameter": key,
                         "true": float(truth_model.params_[key]),
                         "estimated": float(est.params_[key]),
-                        "log_ratio": float(np.log(float(est.params_[key]) / float(truth_model.params_[key]))),
+                        "log_ratio": float(
+                            np.log(float(est.params_[key]) / float(truth_model.params_[key]))
+                        ),
                     }
                 )
         for key in array_keys:
@@ -56,9 +58,13 @@ def parameter_recovery(
         return frame
     summary = (
         frame.groupby("parameter")
-        .agg(true=("true", "first"), mean_estimate=("estimated", "mean"),
-             sd_estimate=("estimated", "std"), mean_log_ratio=("log_ratio", "mean"),
-             max_abs_log_ratio=("log_ratio", lambda s: float(np.max(np.abs(s)))))
+        .agg(
+            true=("true", "first"),
+            mean_estimate=("estimated", "mean"),
+            sd_estimate=("estimated", "std"),
+            mean_log_ratio=("log_ratio", "mean"),
+            max_abs_log_ratio=("log_ratio", lambda s: float(np.max(np.abs(s)))),
+        )
         .reset_index()
     )
     summary["recovered"] = summary["max_abs_log_ratio"] < np.log(2.0)

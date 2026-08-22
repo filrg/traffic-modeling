@@ -61,18 +61,29 @@ class GateEvidence:
     collision_tol: float = 1e-3
 
 
-def fold_stability_gate(evidence: GateEvidence,
-                        z_tol: float = 3.0) -> tuple[bool, str, float, float]:
+def fold_stability_gate(
+    evidence: GateEvidence, z_tol: float = 3.0
+) -> tuple[bool, str, float, float]:
     """Grade gate 7: no validation window is reproduced materially worse than the rest."""
     ev = evidence.fold_evidence
     if ev is None or len(ev) == 0:
         return False, "not evaluated: no fold evidence (see evaluate_on_folds)", np.nan, z_tol
     n_folds = int(ev["fold"].nunique())
     if n_folds < evidence.min_folds:
-        return False, f"{n_folds} fold(s), rolling-origin stability needs >= {evidence.min_folds}", np.nan, z_tol
+        return (
+            False,
+            f"{n_folds} fold(s), rolling-origin stability needs >= {evidence.min_folds}",
+            np.nan,
+            z_tol,
+        )
     finite = ev.loc[np.isfinite(ev["Z"].to_numpy(dtype=float))].reset_index(drop=True)
     if finite.empty:
-        return False, f"{n_folds} folds but no finite Z: metrics undefined on these windows", np.nan, z_tol
+        return (
+            False,
+            f"{n_folds} folds but no finite Z: metrics undefined on these windows",
+            np.nan,
+            z_tol,
+        )
     worst = finite.loc[finite["Z"].idxmax()]
     z = float(worst["Z"])
     detail = f"{n_folds} folds, worst Z {z:.2f} ({worst['metric']} on {worst['fold']})"
@@ -102,11 +113,19 @@ def scaling_drift_gate(evidence: GateEvidence) -> tuple[bool, str, float, float]
 
     checks: list[tuple] = []
     se = sub["sd_total"].to_numpy(dtype=float) / np.sqrt(sub["n_paths"].to_numpy(dtype=float))
-    z_rate = np.abs(sub["mean_total"].to_numpy(dtype=float) - sub["expected_total"].to_numpy(dtype=float))
+    z_rate = np.abs(
+        sub["mean_total"].to_numpy(dtype=float) - sub["expected_total"].to_numpy(dtype=float)
+    )
     z_rate = z_rate / np.maximum(se, 1e-12)
     # rate linearity is required over the whole sweep, not only `alpha_range`
-    checks.append(("rate_Z", float(np.nanmax(z_rate)), evidence.rate_z_tol,
-                   float(sub["alpha"].to_numpy()[int(np.nanargmax(z_rate))])))
+    checks.append(
+        (
+            "rate_Z",
+            float(np.nanmax(z_rate)),
+            evidence.rate_z_tol,
+            float(sub["alpha"].to_numpy()[int(np.nanargmax(z_rate))]),
+        )
+    )
     for base_col, tol in (
         ("IDC_15m_drift_log", evidence.idc_drift_tol),
         ("IDC_1d_drift_log", evidence.idc_drift_tol),
@@ -135,6 +154,142 @@ def scaling_drift_gate(evidence: GateEvidence) -> tuple[bool, str, float, float]
     return ratios[worst_i] <= 1.0, detail, float(ratios[worst_i]), 1.0
 
 
+def _result(
+    name: str,
+    passed: bool,
+    detail: str,
+    value: float = np.nan,
+    threshold: float = np.nan,
+) -> GateResult:
+    return GateResult(name, bool(passed), detail, float(value), float(threshold))
+
+
+def _expected_rate(
+    synthetic: pd.Series,
+    trace: pd.Series,
+    tolerance: float,
+) -> GateResult:
+    error = abs(synthetic["mean"] / trace["mean"] - 1.0)
+    return _result(
+        "1_expected_rate",
+        error <= tolerance,
+        f"relative rate error {error:.4f}",
+        error,
+        tolerance,
+    )
+
+
+def _realised_rate(
+    paths: Sequence[np.ndarray],
+    trace: pd.Series,
+    envelope: pd.DataFrame,
+    z_tolerance: float,
+) -> GateResult:
+    means = np.array([path.mean() for path in paths])
+    standard_error = envelope.loc["mean", "se"] if "mean" in envelope.index else np.nan
+    z_score = abs(means.mean() - trace["mean"]) / max(standard_error, 1e-12)
+    return _result(
+        "2_realised_rate_distribution",
+        z_score <= z_tolerance,
+        f"Z = {z_score:.2f} against bootstrap SE",
+        z_score,
+        z_tolerance,
+    )
+
+
+def _idc_envelope(
+    synthetic: pd.Series,
+    envelope: pd.DataFrame,
+    z_scores: pd.DataFrame,
+    evidence: GateEvidence,
+) -> GateResult:
+    scale_matched = evidence.idc_envelope
+    if scale_matched is not None and len(scale_matched):
+        graded = [
+            scale
+            for scale in scale_matched.index
+            if bool(scale_matched.loc[scale, "supported"]) and f"IDC_{scale}" in synthetic.index
+        ]
+        inside = [
+            scale_matched.loc[scale, "q025"]
+            <= synthetic[f"IDC_{scale}"]
+            <= scale_matched.loc[scale, "q975"]
+            for scale in graded
+        ]
+        skipped = [
+            scale
+            for scale in scale_matched.index
+            if not bool(scale_matched.loc[scale, "supported"])
+        ]
+        note = f" (scale-matched blocks; ungraded: {', '.join(skipped) or 'none'})"
+    else:
+        rows = [metric for metric in z_scores.index if metric.startswith("IDC_")]
+        inside = [
+            envelope.loc[metric, "q025"] <= synthetic[metric] <= envelope.loc[metric, "q975"]
+            for metric in rows
+            if metric in envelope.index
+        ]
+        note = " (single shared envelope)"
+    fraction = float(np.mean(inside)) if inside else 0.0
+    return _result(
+        "3_idc_envelope",
+        fraction >= 0.6,
+        f"{fraction:.0%} of {len(inside)} scales inside envelope{note}",
+        fraction,
+        0.6,
+    )
+
+
+def _acf_bias(
+    synthetic: pd.Series,
+    trace: pd.Series,
+    z_scores: pd.DataFrame,
+    z_tolerance: float,
+) -> GateResult:
+    rows = [metric for metric in z_scores.index if metric.startswith("ACF_")]
+    signed = np.array([synthetic[metric] - trace[metric] for metric in rows])
+    systematic = (
+        bool(np.all(signed > 0) or np.all(signed < 0)) and float(np.mean(np.abs(signed))) > 0.05
+    )
+    worst = float(z_scores.loc[rows, "Z"].max()) if rows else np.nan
+    return _result(
+        "4_acf_no_systematic_bias",
+        (not systematic) and worst <= z_tolerance,
+        f"worst ACF Z {worst:.2f}, systematic={systematic}",
+        worst,
+        z_tolerance,
+    )
+
+
+def _episodes(z_scores: pd.DataFrame, z_tolerance: float) -> GateResult:
+    rows = [
+        metric
+        for metric in z_scores.index
+        if metric.startswith(("busy_", "quiet_", "roll", "zero_bin"))
+    ]
+    worst = float(z_scores.loc[rows, "Z"].max()) if rows else np.nan
+    return _result(
+        "5_episodes_and_tails",
+        worst <= z_tolerance,
+        f"worst episode/tail Z {worst:.2f}",
+        worst,
+        z_tolerance,
+    )
+
+
+def _spectrum(z_scores: pd.DataFrame, z_tolerance: float) -> GateResult:
+    rows = [metric for metric in z_scores.index if metric.startswith("wv_level")]
+    worst = float(z_scores.loc[rows, "Z"].max()) if rows else np.nan
+    threshold = 2 * z_tolerance
+    return _result(
+        "6_spectrum_and_totals",
+        worst <= threshold,
+        f"worst wavelet-variance Z {worst:.2f}",
+        worst,
+        threshold,
+    )
+
+
 def evaluate_gates(
     trace_counts: np.ndarray,
     syn_paths: Sequence[np.ndarray],
@@ -145,91 +300,30 @@ def evaluate_gates(
     stop_at_first_failure: bool = True,
     evidence: GateEvidence | None = None,
 ) -> GateReport:
-    """Run gates 1-8 in order; the scalar rate calibration unlocks only after all pass.
-
-    Gates 7 and 8 are graded from `evidence`; without it they fail as
-    unevaluated, so a report can never pass on gates that were never run.
-    """
+    """Run the eight structural gates in order."""
     evidence = evidence or GateEvidence()
-    trace = np.asarray(trace_counts, dtype=float)
-    syn = [np.asarray(p, dtype=float) for p in syn_paths]
-    syn_metrics = pd.DataFrame([metric_vector(p, busy_threshold) for p in syn]).mean()
-    trace_metrics = metric_vector(trace, busy_threshold)
-    zt = z_table(syn_metrics, trace_metrics, envelope["se"])
+    trace_counts = np.asarray(trace_counts, dtype=float)
+    paths = [np.asarray(path, dtype=float) for path in syn_paths]
+    synthetic = pd.DataFrame([metric_vector(path, busy_threshold) for path in paths]).mean()
+    trace = metric_vector(trace_counts, busy_threshold)
+    z_scores = z_table(synthetic, trace, envelope["se"])
+
+    first_six = (
+        _expected_rate(synthetic, trace, rate_tol),
+        _realised_rate(paths, trace, envelope, z_tol),
+        _idc_envelope(synthetic, envelope, z_scores, evidence),
+        _acf_bias(synthetic, trace, z_scores, z_tol),
+        _episodes(z_scores, z_tol),
+        _spectrum(z_scores, z_tol),
+    )
     report = GateReport()
+    for result in first_six:
+        report.results.append(result)
+        if not result.passed and stop_at_first_failure:
+            return report
 
-    def add(name: str, passed: bool, detail: str, value=np.nan, threshold=np.nan) -> bool:
-        report.results.append(GateResult(name, bool(passed), detail, float(value), float(threshold)))
-        return bool(passed)
-
-    # 1 expected rate
-    err = abs(syn_metrics["mean"] / trace_metrics["mean"] - 1.0)
-    ok = add("1_expected_rate", err <= rate_tol, f"relative rate error {err:.4f}", err, rate_tol)
-    if not ok and stop_at_first_failure:
+    report.results.append(_result("7_fold_stability", *fold_stability_gate(evidence, z_tol)))
+    if not report.results[-1].passed and stop_at_first_failure:
         return report
-
-    # 2 realised-rate distribution against finite-horizon uncertainty
-    means = np.array([p.mean() for p in syn])
-    se = envelope.loc["mean", "se"] if "mean" in envelope.index else np.nan
-    z = abs(means.mean() - trace_metrics["mean"]) / max(se, 1e-12)
-    ok = add("2_realised_rate_distribution", z <= z_tol,
-             f"Z = {z:.2f} against bootstrap SE", z, z_tol)
-    if not ok and stop_at_first_failure:
-        return report
-
-    # 3 IDC curve inside the trace-bootstrap envelope
-    sm = evidence.idc_envelope
-    if sm is not None and len(sm):
-        # scale-matched blocks; scales the trace cannot support are not graded
-        graded = [s for s in sm.index if bool(sm.loc[s, "supported"]) and f"IDC_{s}" in syn_metrics.index]
-        inside = [sm.loc[s, "q025"] <= syn_metrics[f"IDC_{s}"] <= sm.loc[s, "q975"] for s in graded]
-        skipped = [s for s in sm.index if not bool(sm.loc[s, "supported"])]
-        note = f" (scale-matched blocks; ungraded: {', '.join(skipped) or 'none'})"
-    else:
-        idc_rows = [m for m in zt.index if m.startswith("IDC_")]
-        inside = [envelope.loc[m, "q025"] <= syn_metrics[m] <= envelope.loc[m, "q975"] for m in idc_rows
-                  if m in envelope.index]
-        note = " (single shared envelope)"
-    frac = float(np.mean(inside)) if inside else 0.0
-    ok = add("3_idc_envelope", frac >= 0.6,
-             f"{frac:.0%} of {len(inside)} scales inside envelope{note}",
-             frac, 0.6)
-    if not ok and stop_at_first_failure:
-        return report
-
-    # 4 raw ACF without systematic bias
-    acf_rows = [m for m in zt.index if m.startswith("ACF_")]
-    signed = np.array([syn_metrics[m] - trace_metrics[m] for m in acf_rows])
-    systematic = bool(np.all(signed > 0) or np.all(signed < 0)) and float(np.mean(np.abs(signed))) > 0.05
-    worst_z = float(zt.loc[acf_rows, "Z"].max()) if acf_rows else np.nan
-    ok = add("4_acf_no_systematic_bias", (not systematic) and worst_z <= z_tol,
-             f"worst ACF Z {worst_z:.2f}, systematic={systematic}", worst_z, z_tol)
-    if not ok and stop_at_first_failure:
-        return report
-
-    # 5 episodes and tails
-    ep_rows = [m for m in zt.index if m.startswith(("busy_", "quiet_", "roll", "zero_bin"))]
-    worst_ep = float(zt.loc[ep_rows, "Z"].max()) if ep_rows else np.nan
-    ok = add("5_episodes_and_tails", worst_ep <= z_tol,
-             f"worst episode/tail Z {worst_ep:.2f}", worst_ep, z_tol)
-    if not ok and stop_at_first_failure:
-        return report
-
-    # 6 spectrum and horizon totals
-    wv_rows = [m for m in zt.index if m.startswith("wv_level")]
-    worst_wv = float(zt.loc[wv_rows, "Z"].max()) if wv_rows else np.nan
-    ok = add("6_spectrum_and_totals", worst_wv <= 2 * z_tol,
-             f"worst wavelet-variance Z {worst_wv:.2f}",
-             worst_wv, 2 * z_tol)
-    if not ok and stop_at_first_failure:
-        return report
-
-    # 7 stability across rolling-origin folds
-    passed, detail, value, threshold = fold_stability_gate(evidence, z_tol)
-    ok = add("7_fold_stability", passed, detail, value, threshold)
-    if not ok and stop_at_first_failure:
-        return report
-
-    # 8 load-scaling drift
-    add("8_scaling_drift", *scaling_drift_gate(evidence))
+    report.results.append(_result("8_scaling_drift", *scaling_drift_gate(evidence)))
     return report

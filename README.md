@@ -103,7 +103,8 @@ SEREN_RESULTS=$PWD/results_scratch python -m seren_countfirst.run_pipeline evalu
 | `seren_countfirst/scaling.py` | load scaling, superposition, the final scalar rate calibration |
 | `seren_countfirst/reconstruct.py` | counts to batch timestamps to sizes to job arrivals, with collision accounting |
 | `seren_countfirst/jobsize/` | the separate size pipeline: the work-unit inversion and the laws fitted to it |
-| `seren_countfirst/state.py` | the resumable pipeline state as npy, csv and json; never pickle |
+| `seren_countfirst/state.py` | the typed, resumable pipeline state as npy, csv and json; never pickle |
+| `seren_countfirst/artifacts.py` | atomic CSV, JSON and NPY writers used by the pipeline |
 | `seren_countfirst/ensemble.py` | which simulated run is representative, and how one is redrawn at another load |
 | `seren_countfirst/run_pipeline/` | the staged command-line driver |
 | `seren_countfirst/experiments/` | standalone feasibility studies |

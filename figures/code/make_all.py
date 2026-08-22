@@ -8,11 +8,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import _common as C
+import _common as C  # noqa: E402
 
 # render order: the arrival side, then the size side, then the tables
-MODULES = ("arrivals", "excursion", "gaps", "generator",
-           "jobsize", "jobsize_regimes", "studies")
+MODULES = ("arrivals", "excursion", "gaps", "generator", "jobsize", "jobsize_regimes", "studies")
 
 
 def load(name: str):
@@ -20,13 +19,14 @@ def load(name: str):
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(
-        description="Render every figure and its csv twin.")
-    ap.add_argument("--module", action="append", choices=MODULES,
-                    help="restrict to one module; repeatable")
+    ap = argparse.ArgumentParser(description="Render every figure and its csv twin.")
+    ap.add_argument(
+        "--module", action="append", choices=MODULES, help="restrict to one module; repeatable"
+    )
     ap.add_argument("--list", action="store_true", help="list modules and views, then exit")
-    ap.add_argument("--check", action="store_true",
-                    help="report which inputs each module is missing, then exit")
+    ap.add_argument(
+        "--check", action="store_true", help="report which inputs each module is missing, then exit"
+    )
     args = ap.parse_args()
 
     chosen = tuple(args.module) if args.module else MODULES
@@ -48,8 +48,7 @@ def main() -> None:
     failed = []
     for name in chosen:
         mod = load(name)
-        missing = [k for k in getattr(mod, "INPUTS", ())
-                   if not C.ARTIFACTS[k][0].exists()]
+        missing = [k for k in getattr(mod, "INPUTS", ()) if not C.ARTIFACTS[k][0].exists()]
         if missing:
             print(f"=== {name}: SKIPPED, missing {', '.join(missing)}")
             failed.append(name)

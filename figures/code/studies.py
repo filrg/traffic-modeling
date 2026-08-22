@@ -21,8 +21,16 @@ RATE_HORIZON_D = (1, 2, 4, 7, 14, 30, 60, 138.25, 180, 365, 730, 1095)
 HZ_N_PATHS_ACF = 300
 HZ_N_PATHS_EXT = 200
 HZ_LAGS = (1, 4, 96, 384, 672)
-HZ_SCALES = ((1, "15 min"), (4, "1 h"), (24, "6 h"), (96, "1 d"), (192, "2 d"),
-             (384, "4 d"), (672, "7 d"), (2880, "30 d"))
+HZ_SCALES = (
+    (1, "15 min"),
+    (4, "1 h"),
+    (24, "6 h"),
+    (96, "1 d"),
+    (192, "2 d"),
+    (384, "4 d"),
+    (672, "7 d"),
+    (2880, "30 d"),
+)
 HZ_HORIZON_D = (1, 7, 30, 138.25, 365, 1095)
 
 # --- load-scaling ---------------------------------------------------------
@@ -41,8 +49,9 @@ def analytic_rho(params: dict, max_lag: int) -> np.ndarray:
     rho[0] = 1.0
     for h in range(1, max_lag + 1):
         r = _corr_u(h, p["phi_slow"], p["phi_long"], p["w_long"])
-        rho[h] = _autocov(p["mean"], p["a"], p["b"], p["c"], p["sigma_fast"],
-                          r, p["phi_fast"], h) / g0
+        rho[h] = (
+            _autocov(p["mean"], p["a"], p["b"], p["c"], p["sigma_fast"], r, p["phi_fast"], h) / g0
+        )
     return rho
 
 
@@ -85,20 +94,28 @@ def rate_error() -> None:
     for d in RATE_HORIZON_D:
         n_bins = n_trace if abs(d - n_trace / BINS_PER_DAY) < 1e-6 else int(round(d * BINS_PER_DAY))
         t_i = tau_int(rho, n_bins)
-        rates = np.array([model.simulate(n_bins, np.random.default_rng(SEED + 100 + i),
-                                         alpha=cal).mean() for i in range(RATE_N_PATHS)])
+        rates = np.array(
+            [
+                model.simulate(n_bins, np.random.default_rng(SEED + 100 + i), alpha=cal).mean()
+                for i in range(RATE_N_PATHS)
+            ]
+        )
         cv_obs = float(rates.std(ddof=1) / rates.mean())
-        rows.append({
-            "days": d, "n_bins": n_bins, "tau_int_bins": t_i,
-            "n_effective_stretches": n_bins / t_i,
-            "cv_predicted": float(np.sqrt(g0 * t_i / n_bins) / mu),
-            "cv_measured": cv_obs,
-            # the ensemble bar the load figure draws: +-1.96 CV / sqrt(N)
-            "ensemble_ci95_pct": 100 * 1.959964 * cv_obs / np.sqrt(RATE_N_PATHS),
-            "mean_rate": float(rates.mean()),
-            "q025": float(np.quantile(rates, 0.025)),
-            "q975": float(np.quantile(rates, 0.975)),
-        })
+        rows.append(
+            {
+                "days": d,
+                "n_bins": n_bins,
+                "tau_int_bins": t_i,
+                "n_effective_stretches": n_bins / t_i,
+                "cv_predicted": float(np.sqrt(g0 * t_i / n_bins) / mu),
+                "cv_measured": cv_obs,
+                # the ensemble bar the load figure draws: +-1.96 CV / sqrt(N)
+                "ensemble_ci95_pct": 100 * 1.959964 * cv_obs / np.sqrt(RATE_N_PATHS),
+                "mean_rate": float(rates.mean()),
+                "q025": float(np.quantile(rates, 0.025)),
+                "q975": float(np.quantile(rates, 0.975)),
+            }
+        )
     df = pd.DataFrame(rows)
 
     # local log-log slope; -0.5 is the asymptote
@@ -110,12 +127,23 @@ def rate_error() -> None:
 
     print(f"model {st['winner']}, {RATE_N_PATHS} paths per horizon")
     print(f"gamma(0) = {g0:.4f}, mean = {mu:.4f}, per-bin CV = {np.sqrt(g0) / mu:.3f}")
-    print(f"tau_long = {p['tau_long_bins']:.1f} bins = "
-          f"{p['tau_long_bins'] / BINS_PER_DAY:.2f} d, w_long = {p['w_long']:.3f}")
+    print(
+        f"tau_long = {p['tau_long_bins']:.1f} bins = "
+        f"{p['tau_long_bins'] / BINS_PER_DAY:.2f} d, w_long = {p['w_long']:.3f}"
+    )
     print(f"tau_inf  = {tau_inf:.1f} bins = {tau_inf / BINS_PER_DAY:.2f} d\n")
-    cols = ["days", "n_bins", "tau_int_bins", "n_effective_stretches", "cv_predicted",
-            "cv_measured", "slope_predicted", "slope_measured", "ensemble_ci95_pct",
-            "mean_rate"]
+    cols = [
+        "days",
+        "n_bins",
+        "tau_int_bins",
+        "n_effective_stretches",
+        "cv_predicted",
+        "cv_measured",
+        "slope_predicted",
+        "slope_measured",
+        "ensemble_ci95_pct",
+        "mean_rate",
+    ]
     print(df[cols].round(4).to_string(index=False))
 
     # the run length needed for a given rate error, from the analytic constant
@@ -123,13 +151,17 @@ def rate_error() -> None:
     tail = df[df["n_bins"] >= 4 * tau_inf]
     const = float(np.sqrt(g0 * tau_inf) / mu)
     fitted = float(np.mean(tail["cv_measured"] * np.sqrt(tail["n_bins"])))
-    print(f"\nasymptote  CV(T) = {const:.2f} / sqrt(T_bins) analytic, "
-          f"{fitted:.2f} fitted past 4 tau_inf")
+    print(
+        f"\nasymptote  CV(T) = {const:.2f} / sqrt(T_bins) analytic, "
+        f"{fitted:.2f} fitted past 4 tau_inf"
+    )
     print(f"           CV(T) = {const / np.sqrt(BINS_PER_DAY):.2f} / sqrt(T_days)")
     for target in (0.20, 0.10, 0.05):
         n = (const / target) ** 2
-        print(f"  CV = {target:.0%} needs T = {n:,.0f} bins = {n / BINS_PER_DAY:,.0f} d"
-              f"   (or {(const / np.sqrt(n_trace) / target) ** 2:,.1f} runs of 138 d)")
+        print(
+            f"  CV = {target:.0%} needs T = {n:,.0f} bins = {n / BINS_PER_DAY:,.0f} d"
+            f"   (or {(const / np.sqrt(n_trace) / target) ** 2:,.1f} runs of 138 d)"
+        )
 
 
 def horizon() -> None:
@@ -153,14 +185,22 @@ def horizon() -> None:
 
     # one tau function serves both dispersion by scale and reliability by length
     print(f"model {st['winner']}")
-    print(f"IDC(1) = {g0 / m:.3f}, tau_inf = {tau_inf:.1f} bins, "
-          f"IDC ceiling = IDC(1) tau_inf = {g0 / m * tau_inf:,.0f}\n")
-    scale = pd.DataFrame([
-        {"q": q, "window": name, "tau_q": tau_int(rho, q),
-         "idc_q": g0 / m * tau_int(rho, q),
-         "frac_of_ceiling": tau_int(rho, q) / tau_inf}
-        for q, name in (*HZ_SCALES, (n_trace, "138 d"))
-    ])
+    print(
+        f"IDC(1) = {g0 / m:.3f}, tau_inf = {tau_inf:.1f} bins, "
+        f"IDC ceiling = IDC(1) tau_inf = {g0 / m * tau_inf:,.0f}\n"
+    )
+    scale = pd.DataFrame(
+        [
+            {
+                "q": q,
+                "window": name,
+                "tau_q": tau_int(rho, q),
+                "idc_q": g0 / m * tau_int(rho, q),
+                "frac_of_ceiling": tau_int(rho, q) / tau_inf,
+            }
+            for q, name in (*HZ_SCALES, (n_trace, "138 d"))
+        ]
+    )
     # the identity CV^2(T) = IDC(T)/(m T) must reproduce the tau-based error
     scale["cv_from_idc"] = np.sqrt(scale["idc_q"] / (m * scale["q"]))
     scale["cv_from_tau"] = np.sqrt(g0 * scale["tau_q"] / scale["q"]) / m
@@ -171,17 +211,25 @@ def horizon() -> None:
     # sample-ACF bias against horizon
     rows = []
     for T in (n_trace // 4, n_trace, n_trace * 4):
-        paths = [model.simulate(T, np.random.default_rng(SEED + 900 + i))
-                 for i in range(HZ_N_PATHS_ACF)]
+        paths = [
+            model.simulate(T, np.random.default_rng(SEED + 900 + i)) for i in range(HZ_N_PATHS_ACF)
+        ]
         est = np.array([acf(x, HZ_LAGS).to_numpy() for x in paths])
         t_T = tau_int(rho, T)
         for j, h in enumerate(HZ_LAGS):
             pred = (1 - h / T) * (rho[h] - t_T / T) / (1 - t_T / T)
-            rows.append({"T": T, "T_over_tau": T / t_T, "lag": h,
-                         "rho_analytic": rho[h], "atten_predicted": pred / rho[h],
-                         "atten_measured": est[:, j].mean() / rho[h],
-                         "mean_hat": est[:, j].mean(),
-                         "median_hat": float(np.median(est[:, j]))})
+            rows.append(
+                {
+                    "T": T,
+                    "T_over_tau": T / t_T,
+                    "lag": h,
+                    "rho_analytic": rho[h],
+                    "atten_predicted": pred / rho[h],
+                    "atten_measured": est[:, j].mean() / rho[h],
+                    "mean_hat": est[:, j].mean(),
+                    "median_hat": float(np.median(est[:, j])),
+                }
+            )
     bias = pd.DataFrame(rows)
     C.write_csv(bias, "analysis_horizon_acf_bias", index=False)
     print("\nsample-ACF attenuation: mean substitution is a lower bound on it")
@@ -192,18 +240,23 @@ def horizon() -> None:
     rows = []
     for d in HZ_HORIZON_D:
         T = n_trace if d == 138.25 else int(round(d * BINS_PER_DAY))
-        paths = [model.simulate(T, np.random.default_rng(SEED + 1300 + i))
-                 for i in range(HZ_N_PATHS_EXT)]
+        paths = [
+            model.simulate(T, np.random.default_rng(SEED + 1300 + i)) for i in range(HZ_N_PATHS_EXT)
+        ]
         mx = np.array([x.max() for x in paths])
-        rows.append({
-            "days": d, "T": T,
-            "median_max": float(np.median(mx)), "mean_max": float(mx.mean()),
-            # the marginal's 1 - 1/T quantile: an iid series of this length
-            "marginal_q": float(np.quantile(long_path, 1 - 1 / T)),
-            "median_longest_quiet": float(np.median([_longest_zero_run(x) for x in paths])),
-            "idc_measured": float(np.mean([idc(x) for x in paths])),
-            "idc_analytic": g0 / m,
-        })
+        rows.append(
+            {
+                "days": d,
+                "T": T,
+                "median_max": float(np.median(mx)),
+                "mean_max": float(mx.mean()),
+                # the marginal's 1 - 1/T quantile: an iid series of this length
+                "marginal_q": float(np.quantile(long_path, 1 - 1 / T)),
+                "median_longest_quiet": float(np.median([_longest_zero_run(x) for x in paths])),
+                "idc_measured": float(np.mean([idc(x) for x in paths])),
+                "idc_analytic": g0 / m,
+            }
+        )
     ext = pd.DataFrame(rows)
     ext["idc_attenuation"] = ext["idc_measured"] / ext["idc_analytic"]
     C.write_csv(ext, "analysis_horizon_extensive", index=False)
@@ -223,7 +276,10 @@ def load_scaling() -> None:
 
     from seren_countfirst.metrics import acf, idc
     from seren_countfirst.models.gated import (
-        _base_acf, _gamma0, _second_moment_ratio, _zero_prob,
+        _base_acf,
+        _gamma0,
+        _second_moment_ratio,
+        _zero_prob,
     )
 
     st = C.state()
@@ -239,18 +295,26 @@ def load_scaling() -> None:
         k_a = alpha * p["kappa"] if rule == "proportional" else p["kappa"]
         args = (m_a, p["a"], p["b"], p["c"], p["sigma_fast"])
         var = _gamma0(*args, k_a)
-        row = {"alpha": alpha, "mean": m_a, "var": var, "idc": var / m_a,
-               "zero_frac": _zero_prob(*args, k_a)}
+        row = {
+            "alpha": alpha,
+            "mean": m_a,
+            "var": var,
+            "idc": var / m_a,
+            "zero_frac": _zero_prob(*args, k_a),
+        }
         for h in LS_LAGS:
-            row[f"acf_{h}"] = _base_acf(*args, k_a, p["phi_slow"], p["phi_fast"],
-                                        p["phi_long"], p["w_long"], h)
+            row[f"acf_{h}"] = _base_acf(
+                *args, k_a, p["phi_slow"], p["phi_fast"], p["phi_long"], p["w_long"], h
+            )
         return row
 
     print(f"model {st['winner']}, kappa_rule = proportional, {LS_N_PATHS} paths per alpha")
     print(f"m = {m:.4f}, kappa = {kappa:.1f}, R = E[lam^2]/m^2 = {R:.3f}")
     print(f"IDC(alpha) = {A:.3f} + {B:.3f} * alpha      (A = 1 + mR/kappa, B = m(R-1))")
-    print(f"ACF saturates: alpha_half = A/B = {A / B:.4f}, so alpha=1 is at "
-          f"{1 / (1 + A / B):.3f} of the ceiling\n")
+    print(
+        f"ACF saturates: alpha_half = A/B = {A / B:.4f}, so alpha=1 is at "
+        f"{1 / (1 + A / B):.3f} of the ceiling\n"
+    )
 
     # rho_alpha(h) = rho_inf(h) * s(alpha) exactly: one alpha-dependent scalar
     # times an alpha-independent shape, so tau_int at load alpha follows from
@@ -266,10 +330,13 @@ def load_scaling() -> None:
         row["idc_affine"] = A + B * a
         row["tau_int_bins"] = 1.0 + (s(a) / s(1.0)) * (tau1 - 1.0)
         row["cv_predicted"] = float(
-            np.sqrt(row["var"] * row["tau_int_bins"] / n_bins) / row["mean"])
+            np.sqrt(row["var"] * row["tau_int_bins"] / n_bins) / row["mean"]
+        )
         row["idc_kappa_constant"] = analytic(a, rule="constant")["idc"]
-        paths = [model.simulate(n_bins, np.random.default_rng(SEED + 200 + i),
-                                alpha=cal * a) for i in range(LS_N_PATHS)]
+        paths = [
+            model.simulate(n_bins, np.random.default_rng(SEED + 200 + i), alpha=cal * a)
+            for i in range(LS_N_PATHS)
+        ]
         row["idc_realised"] = float(np.median([idc(x) for x in paths]))
         row["zero_frac_realised"] = float(np.median([(x == 0).mean() for x in paths]))
         ac = np.array([acf(x, LS_LAGS).to_numpy() for x in paths])
@@ -283,23 +350,42 @@ def load_scaling() -> None:
     C.write_csv(df, "analysis_load_scaling_stats", index=False)
 
     print("dispersion - affine in alpha, and the kappa rule barely matters:")
-    print(df[["alpha", "idc", "idc_affine", "idc_realised", "idc_kappa_constant"]]
-          .round(2).to_string(index=False))
+    print(
+        df[["alpha", "idc", "idc_affine", "idc_realised", "idc_kappa_constant"]]
+        .round(2)
+        .to_string(index=False)
+    )
     print("\ncorrelation - nearly alpha-invariant above alpha = 1:")
     cols = ["alpha"] + [f"acf_{h}" for h in LS_LAGS] + [f"acf_{h}_realised" for h in LS_LAGS]
     print(df[cols].round(4).to_string(index=False))
     print("\nemptiness, run-to-run rate error, busiest bin:")
-    print(df[["alpha", "zero_frac", "zero_frac_realised", "tau_int_bins",
-              "cv_predicted", "path_cv", "max_bin_median"]].round(4).to_string(index=False))
+    print(
+        df[
+            [
+                "alpha",
+                "zero_frac",
+                "zero_frac_realised",
+                "tau_int_bins",
+                "cv_predicted",
+                "path_cv",
+                "max_bin_median",
+            ]
+        ]
+        .round(4)
+        .to_string(index=False)
+    )
 
     # tests whether P(0 | alpha) is probit-linear in log alpha with slope -1/(a+b)
     z = norm.ppf(df["zero_frac"].to_numpy())
     slope, intercept = np.polyfit(np.log(df["alpha"].to_numpy()), z, 1)
     resid = float(np.max(np.abs(z - (intercept + slope * np.log(df["alpha"])))))
-    print(f"\nP(0|alpha) = Phi({intercept:.4f} {slope:+.4f} log alpha), "
-          f"max residual {resid:.4f} in probit units")
-    print(f"  gate+ramp exponent a+b = {p['a'] + p['b']:.3f}, "
-          f"-1/(a+b) = {-1 / (p['a'] + p['b']):.4f}")
+    print(
+        f"\nP(0|alpha) = Phi({intercept:.4f} {slope:+.4f} log alpha), "
+        f"max residual {resid:.4f} in probit units"
+    )
+    print(
+        f"  gate+ramp exponent a+b = {p['a'] + p['b']:.3f}, -1/(a+b) = {-1 / (p['a'] + p['b']):.4f}"
+    )
 
     # the load at which idleness ends, against the Poisson reference
     def p0_gap(la: float, target: float) -> float:
@@ -308,8 +394,10 @@ def load_scaling() -> None:
     print("\nload needed to reach a given idle fraction:")
     for target in (0.50, 0.25, 0.10):
         a_gli = float(np.exp(brentq(p0_gap, np.log(0.1), np.log(1e9), args=(target,))))
-        print(f"  {target:.0%} empty bins: alpha = {a_gli:>12,.1f}   "
-              f"Poisson needs alpha = {-np.log(target) / m:.3f}")
+        print(
+            f"  {target:.0%} empty bins: alpha = {a_gli:>12,.1f}   "
+            f"Poisson needs alpha = {-np.log(target) / m:.3f}"
+        )
 
 
 def latent_frontier() -> None:
@@ -338,10 +426,11 @@ def latent_frontier() -> None:
     gamma0 = idc_v * m
     const = 1.0 + (idc_v - 1.0) / m
 
-    print(f"trace: mean {m:.4f}, IDC {idc_v:.3f}, P(0) {p0_target:.4f}, "
-          f"hourly lag-1 ACF {acf_target:.4f}")
-    print(f"variance constraint: exp(V)(1 + 1/kappa) = {const:.4f}, "
-          f"so V <= {np.log(const):.4f}\n")
+    print(
+        f"trace: mean {m:.4f}, IDC {idc_v:.3f}, P(0) {p0_target:.4f}, "
+        f"hourly lag-1 ACF {acf_target:.4f}"
+    )
+    print(f"variance constraint: exp(V)(1 + 1/kappa) = {const:.4f}, so V <= {np.log(const):.4f}\n")
 
     rows = []
     for kappa in (0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 40.0, 100.0, 1e3, 1e6):
@@ -349,8 +438,14 @@ def latent_frontier() -> None:
         if E <= 1.0:
             continue
         V = float(np.log(E))
-        rows.append({"kappa": kappa, "V": V, "zero_frac": zero_frac(m, V, kappa),
-                     "acf_ceiling": acf_ceiling(m, V, gamma0)})
+        rows.append(
+            {
+                "kappa": kappa,
+                "V": V,
+                "zero_frac": zero_frac(m, V, kappa),
+                "acf_ceiling": acf_ceiling(m, V, gamma0),
+            }
+        )
     table = pd.DataFrame(rows)
     table["acf_reachable"] = table["acf_ceiling"] >= acf_target
     table["zero_frac_reached"] = table["zero_frac"] >= p0_target
@@ -368,11 +463,14 @@ def latent_frontier() -> None:
             p0 = zero_frac(m, V, kappa)
             if best is None or p0 > best[0]:
                 best = (p0, kappa, V)
-    print(f"\nlargest P(0) attainable with the mean, the dispersion and the ACF "
-          f"target: {best[0]:.4f}")
+    print(
+        f"\nlargest P(0) attainable with the mean, the dispersion and the ACF target: {best[0]:.4f}"
+    )
     print(f"  at kappa {best[1]:.3g}, V {best[2]:.4f}, and only as phi -> 1")
-    print(f"trace requires {p0_target:.4f}: short by {p0_target - best[0]:.4f}. "
-          f"No admissible parameter set reproduces the three together.")
+    print(
+        f"trace requires {p0_target:.4f}: short by {p0_target - best[0]:.4f}. "
+        f"No admissible parameter set reproduces the three together."
+    )
 
 
 INPUTS = ("state", "counts", "models")

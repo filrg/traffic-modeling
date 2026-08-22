@@ -30,8 +30,8 @@ def _unpack(theta: np.ndarray) -> tuple:
     second-order stationary with `a, b >= 0`.
     """
     d = float(np.exp(np.clip(theta[0], -30.0, 30.0)))
-    s = float(expit(theta[1]))                       # a + b, the ACF decay rate
-    frac = float(expit(theta[2]))                    # b as a fraction of b_max
+    s = float(expit(theta[1]))  # a + b, the ACF decay rate
+    frac = float(expit(theta[2]))  # b as a fraction of b_max
     kappa = float(np.exp(np.clip(theta[3], -20.0, 20.0)))
     b = (1.0 - 1e-6) * b_max(s, kappa) * frac
     return d, s - b, b, kappa
@@ -95,11 +95,18 @@ class NBINGARCH(CountModel):
             return mean, np.inf, np.nan, np.nan
         var_lam = self._var_lambda(b, s, var)
         rho1 = (a * var_lam + b * var) / var
-        return mean, var / mean, rho1, rho1 * s ** 3
+        return mean, var / mean, rho1, rho1 * s**3
 
     @classmethod
-    def calibrate(cls, mean: float, variance: float, acf_lag1: float, acf_lag4: float,
-                  n_restarts: int = 4, seed: int = 0) -> "NBINGARCH":
+    def calibrate(
+        cls,
+        mean: float,
+        variance: float,
+        acf_lag1: float,
+        acf_lag4: float,
+        n_restarts: int = 4,
+        seed: int = 0,
+    ) -> "NBINGARCH":
         """Match the analytic (mean, IDC, ACF lag 1, ACF lag 4); no likelihood is evaluated.
 
         Four targets against four free parameters, solved inside the admissible
@@ -107,8 +114,9 @@ class NBINGARCH(CountModel):
         guaranteed.
         """
         model = cls()
-        targets = np.array([float(mean), float(variance) / float(mean),
-                            float(acf_lag1), float(acf_lag4)])
+        targets = np.array(
+            [float(mean), float(variance) / float(mean), float(acf_lag1), float(acf_lag4)]
+        )
         rng = np.random.default_rng(seed)
 
         def loss(theta):
@@ -122,29 +130,38 @@ class NBINGARCH(CountModel):
                 + (rho4 - targets[3]) ** 2
             )
 
-        grid = [np.array([np.log(mean * 0.3), logit(0.7), logit(0.9), np.log(1.0)]),
-                np.array([np.log(mean * 0.1), logit(0.9), logit(0.99), np.log(0.5)]),
-                np.array([np.log(mean * 0.5), logit(0.5), logit(0.5), np.log(2.0)])]
-        starts = grid + [grid[0] + rng.normal(0.0, 0.4, 4)
-                         for _ in range(max(n_restarts - len(grid), 0))]
+        grid = [
+            np.array([np.log(mean * 0.3), logit(0.7), logit(0.9), np.log(1.0)]),
+            np.array([np.log(mean * 0.1), logit(0.9), logit(0.99), np.log(0.5)]),
+            np.array([np.log(mean * 0.5), logit(0.5), logit(0.5), np.log(2.0)]),
+        ]
+        starts = grid + [
+            grid[0] + rng.normal(0.0, 0.4, 4) for _ in range(max(n_restarts - len(grid), 0))
+        ]
 
         best = None
-        for theta0 in starts[:max(n_restarts, 1)]:
-            res = minimize(loss, theta0, method="Nelder-Mead",
-                           options={"maxiter": 6000, "xatol": 1e-9, "fatol": 1e-12})
+        for theta0 in starts[: max(n_restarts, 1)]:
+            res = minimize(
+                loss,
+                theta0,
+                method="Nelder-Mead",
+                options={"maxiter": 6000, "xatol": 1e-9, "fatol": 1e-12},
+            )
             if best is None or res.fun < best.fun:
                 best = res
 
         d, a, b, kappa = _unpack(best.x)
         model._store(d, a, b, kappa, len(targets))
         got = np.array(model._analytic(best.x))
-        model.params_.update({
-            "calibration_loss": float(best.fun),
-            "resid_mean": float(got[0] / targets[0] - 1.0),
-            "resid_IDC": float(got[1] / targets[1] - 1.0),
-            "resid_acf_lag1": float(got[2] - targets[2]),
-            "resid_acf_lag4": float(got[3] - targets[3]),
-        })
+        model.params_.update(
+            {
+                "calibration_loss": float(best.fun),
+                "resid_mean": float(got[0] / targets[0] - 1.0),
+                "resid_IDC": float(got[1] / targets[1] - 1.0),
+                "resid_acf_lag1": float(got[2] - targets[2]),
+                "resid_acf_lag4": float(got[3] - targets[3]),
+            }
+        )
         # moment-calibrated: `report` stays None, so there is no AIC to quote
         return model
 
@@ -152,7 +169,10 @@ class NBINGARCH(CountModel):
         s = a + b
         mean, var = self._moments(d, a, b, kappa)
         self.params_ = {
-            "d": d, "a": a, "b": b, "kappa": kappa,
+            "d": d,
+            "a": a,
+            "b": b,
+            "kappa": kappa,
             "persistence": float(s),
             "b_over_b_max": float(b / max(b_max(s, kappa), _EPS)),
             "half_life_bins": float(np.log(0.5) / np.log(min(s, 1.0 - 1e-12))),
@@ -169,8 +189,9 @@ class NBINGARCH(CountModel):
             return -np.inf
         return float(nb2_loglik(n, lam, kappa))
 
-    def fit(self, counts: np.ndarray, n_restarts: int = 3, maxiter: int = 400,
-            seed: int = 0, **kwargs) -> "NBINGARCH":
+    def fit(
+        self, counts: np.ndarray, n_restarts: int = 3, maxiter: int = 400, seed: int = 0, **kwargs
+    ) -> "NBINGARCH":
         """Fit by exact conditional MLE, the first bin conditioned on the stationary mean.
 
         The recursion is observed, so this is the true likelihood and its AIC is
@@ -186,8 +207,10 @@ class NBINGARCH(CountModel):
 
         # starts spread over persistence and over the feedback share of it
         grid = [start(0.95, 0.5, 0.3), start(0.99, 0.9, 0.2), start(0.8, 0.3, 1.0)]
-        starts = grid[:max(n_restarts, 1)]
-        starts += [grid[0] + rng.normal(0.0, 0.3, 4) for _ in range(max(n_restarts, 1) - len(starts))]
+        starts = grid[: max(n_restarts, 1)]
+        starts += [
+            grid[0] + rng.normal(0.0, 0.3, 4) for _ in range(max(n_restarts, 1) - len(starts))
+        ]
 
         def nll(theta):
             ll = self._loglik(n, np.asarray(theta, dtype=float))
@@ -195,8 +218,12 @@ class NBINGARCH(CountModel):
 
         best, best_res = np.inf, None
         for theta0 in starts:
-            res = minimize(nll, theta0, method="Nelder-Mead",
-                           options={"maxiter": maxiter * 4, "xatol": 1e-7, "fatol": 1e-7})
+            res = minimize(
+                nll,
+                theta0,
+                method="Nelder-Mead",
+                options={"maxiter": maxiter * 4, "xatol": 1e-7, "fatol": 1e-7},
+            )
             if res.fun < best:
                 best, best_res = res.fun, res
 
@@ -208,15 +235,26 @@ class NBINGARCH(CountModel):
         if p["persistence"] > 0.999:
             warnings.append("a + b at the unit root: the persistence is not stationary in practice")
         if p["b_over_b_max"] > 0.99:
-            warnings.append("b pinned at the second-moment boundary b^2 = kappa (1 - (a+b)^2): "
-                            "the unconstrained likelihood implies no stationary variance; "
-                            "report the moment calibration instead")
+            warnings.append(
+                "b pinned at the second-moment boundary b^2 = kappa (1 - (a+b)^2): "
+                "the unconstrained likelihood implies no stationary variance; "
+                "report the moment calibration instead"
+            )
         if b < 1e-3:
-            warnings.append("b near zero: feedback inert, lambda constant, "
-                            "the model collapses to iid NB")
+            warnings.append(
+                "b near zero: feedback inert, lambda constant, the model collapses to iid NB"
+            )
 
-        self.report = FitReport(bool(best_res.success), int(best_res.nit), 0.0, float(-best),
-                                4, len(n), warnings, restarts=len(starts))
+        self.report = FitReport(
+            bool(best_res.success),
+            int(best_res.nit),
+            0.0,
+            float(-best),
+            4,
+            len(n),
+            warnings,
+            restarts=len(starts),
+        )
         return self
 
     def implied_marginals(self) -> pd.Series:
@@ -236,14 +274,21 @@ class NBINGARCH(CountModel):
                 # same footing as the gated rungs, so the table rows compare
                 "acf_1h_lag1": float(hourly_acf1_from_autocov(var, gamma)),
                 "acf_lag1": float(rho1),
-                "acf_lag4": float(rho1 * s ** 3),
-                "acf_lag96": float(rho1 * s ** 95),
+                "acf_lag4": float(rho1 * s**3),
+                "acf_lag96": float(rho1 * s**95),
                 "persistence": float(s),
             }
         )
 
-    def simulate(self, n_bins: int, rng: np.random.Generator, alpha: float = 1.0,
-                 kappa_rule: str = "proportional", return_intensity: bool = False, **kwargs):
+    def simulate(
+        self,
+        n_bins: int,
+        rng: np.random.Generator,
+        alpha: float = 1.0,
+        kappa_rule: str = "proportional",
+        return_intensity: bool = False,
+        **kwargs,
+    ):
         """Draw a path; load scaling enters through the intercept, so the mean scales by alpha.
 
         The recursion reads back its own counts and cannot be vectorised over

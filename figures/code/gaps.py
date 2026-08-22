@@ -39,12 +39,18 @@ def _trace_events(st) -> tuple:
     from seren_countfirst.data import ActivityScheme
 
     counts = st["counts"]
-    times_s = (pd.DatetimeIndex(st["batch_times"]) - counts.index[0]).total_seconds().to_numpy(float)
+    times_s = (
+        (pd.DatetimeIndex(st["batch_times"]) - counts.index[0]).total_seconds().to_numpy(float)
+    )
     scheme = st["scheme"]
     if isinstance(scheme, dict):
-        scheme = ActivityScheme(edges=tuple(scheme["edges"]), labels=tuple(scheme["labels"]),
-                                busy_threshold=scheme["busy_threshold"],
-                                quiet_threshold=scheme["quiet_threshold"], source=scheme["source"])
+        scheme = ActivityScheme(
+            edges=tuple(scheme["edges"]),
+            labels=tuple(scheme["labels"]),
+            busy_threshold=scheme["busy_threshold"],
+            quiet_threshold=scheme["quiet_threshold"],
+            source=scheme["source"],
+        )
     return times_s, np.asarray(st["batches_sizes"], int), scheme
 
 
@@ -56,7 +62,11 @@ def ensemble() -> dict:
     without which a gap statistic reads per-path volume instead of shape.
     """
     from seren_countfirst.reconstruct import (
-        make_iid_mark_sampler, OffsetTemplates, PatternTemplates, reconstruct_events)
+        make_iid_mark_sampler,
+        OffsetTemplates,
+        PatternTemplates,
+        reconstruct_events,
+    )
 
     if _CACHE:
         return _CACHE
@@ -83,9 +93,17 @@ def ensemble() -> dict:
         if abs(p.mean() / x.mean() - 1.0) > VOL_TOL:
             continue
         try:
-            got = [reconstruct_events(p, bin_s, np.random.default_rng(C.SEED + 5000 + i),
-                                      sampler, offsets=law, classes=scheme.classify(p))
-                   for law in placements.values()]
+            got = [
+                reconstruct_events(
+                    p,
+                    bin_s,
+                    np.random.default_rng(C.SEED + 5000 + i),
+                    sampler,
+                    offsets=law,
+                    classes=scheme.classify(p),
+                )
+                for law in placements.values()
+            ]
         except ValueError:
             # an overflowing bin is dropped, never merged, and drops both arms so
             # the two stay paired
@@ -97,15 +115,28 @@ def ensemble() -> dict:
     fitted, empirical = [], []
     for rep in range(10):
         r = np.random.default_rng(C.SEED + 900 + rep)
-        for pool, draw in ((fitted, stats.gamma.rvs(shape, scale=scale, size=int(len(gaps) * 1.5),
-                                                    random_state=r)),
-                           (empirical, r.choice(gaps, size=int(len(gaps) * 1.4), replace=True))):
+        for pool, draw in (
+            (
+                fitted,
+                stats.gamma.rvs(shape, scale=scale, size=int(len(gaps) * 1.5), random_state=r),
+            ),
+            (empirical, r.choice(gaps, size=int(len(gaps) * 1.4), replace=True)),
+        ):
             t = np.cumsum(draw)
             pool.append(t[t < horizon])
 
-    _CACHE.update(trace=times_s, gaps=gaps, horizon=horizon, syn=syn, syn_iid=syn_iid,
-                  fitted=fitted, empirical=empirical, gamma=(shape, scale),
-                  counts=x, bin_s=bin_s)
+    _CACHE.update(
+        trace=times_s,
+        gaps=gaps,
+        horizon=horizon,
+        syn=syn,
+        syn_iid=syn_iid,
+        fitted=fitted,
+        empirical=empirical,
+        gamma=(shape, scale),
+        counts=x,
+        bin_s=bin_s,
+    )
     print(f"ensemble: {len(syn)} of {N_PATHS} winner paths inside +-{VOL_TOL:.0%} of trace volume")
     return _CACHE
 
@@ -133,8 +164,11 @@ def cv_window() -> None:
     """Within-window gap CV against the window it is measured in."""
     e = ensemble()
     rows = {"Trace": _cv_curve(e["trace"], e["horizon"])[0]}
-    for label, pool in (("GLI-NB", e["syn"]), (RENEWAL_FIT, e["fitted"]),
-                        (RENEWAL_EMP, e["empirical"])):
+    for label, pool in (
+        ("GLI-NB", e["syn"]),
+        (RENEWAL_FIT, e["fitted"]),
+        (RENEWAL_EMP, e["empirical"]),
+    ):
         rows[label] = pd.DataFrame([_cv_curve(t, e["horizon"])[0] for t in pool]).median()
     table = pd.DataFrame(rows)
 
@@ -143,13 +177,28 @@ def cv_window() -> None:
     x = np.arange(len(WINDOWS_MIN), dtype=float)
     entries = [("Trace", C.INK, 1.5, "-")]
 
-    ax.plot(x, table["Trace"].to_numpy(), color=C.INK, linewidth=1.5,
-            marker="o", markersize=3.2, zorder=4)
+    ax.plot(
+        x,
+        table["Trace"].to_numpy(),
+        color=C.INK,
+        linewidth=1.5,
+        marker="o",
+        markersize=3.2,
+        zorder=4,
+    )
     # the renewal arms go to the csv twin, not the panel; `idi` is the view that
     # has to show them
     color = C.SERIES[0][2]
-    ax.plot(x, table["GLI-NB"].to_numpy(), color=color, linewidth=1.3,
-            linestyle=C.MODEL_DASH, marker="o", markersize=3.0, zorder=3)
+    ax.plot(
+        x,
+        table["GLI-NB"].to_numpy(),
+        color=color,
+        linewidth=1.3,
+        linestyle=C.MODEL_DASH,
+        marker="o",
+        markersize=3.0,
+        zorder=3,
+    )
     entries.append(("GLI-NB", color, 1.3, C.MODEL_DASH))
     # a Poisson process reads 1 at every window
     ax.axhline(1.0, color=C.MUTED, linewidth=0.8, linestyle=(0, (1.5, 1.5)), zorder=2)
@@ -194,8 +243,11 @@ def idi() -> None:
     """Interval dispersion against block length: flat is the iid-gap signature."""
     e = ensemble()
     rows = {"Trace": _idi(e["gaps"])}
-    for label, pool in (("GLI-NB", e["syn"]), (RENEWAL_FIT, e["fitted"]),
-                        (RENEWAL_EMP, e["empirical"])):
+    for label, pool in (
+        ("GLI-NB", e["syn"]),
+        (RENEWAL_FIT, e["fitted"]),
+        (RENEWAL_EMP, e["empirical"]),
+    ):
         rows[label] = pd.DataFrame([_idi(np.diff(np.sort(t))) for t in pool]).median()
     table = pd.DataFrame(rows)
 
@@ -204,11 +256,26 @@ def idi() -> None:
     x = np.arange(len(IDI_K), dtype=float)
     entries = [("Trace", C.INK, 1.5, "-")]
 
-    ax.plot(x, table["Trace"].to_numpy(), color=C.INK, linewidth=1.5,
-            marker="o", markersize=3.2, zorder=4)
+    ax.plot(
+        x,
+        table["Trace"].to_numpy(),
+        color=C.INK,
+        linewidth=1.5,
+        marker="o",
+        markersize=3.2,
+        zorder=4,
+    )
     for (_, _, color), label in zip(C.SERIES, ("GLI-NB", RENEWAL_FIT, RENEWAL_EMP)):
-        ax.plot(x, table[label].to_numpy(), color=color, linewidth=1.3,
-                linestyle=C.MODEL_DASH, marker="o", markersize=3.0, zorder=3)
+        ax.plot(
+            x,
+            table[label].to_numpy(),
+            color=color,
+            linewidth=1.3,
+            linestyle=C.MODEL_DASH,
+            marker="o",
+            markersize=3.0,
+            zorder=3,
+        )
         entries.append((label, color, 1.3, C.MODEL_DASH))
 
     ax.set_xticks(x)
@@ -257,12 +324,27 @@ def idc_ceiling() -> None:
     xs = np.arange(len(SCALES), dtype=float)
     entries = [("Trace", C.INK, 1.5, "-")]
 
-    ax.plot(xs, table["Trace"].to_numpy(), color=C.INK, linewidth=1.5,
-            marker="o", markersize=3.2, zorder=4)
+    ax.plot(
+        xs,
+        table["Trace"].to_numpy(),
+        color=C.INK,
+        linewidth=1.5,
+        marker="o",
+        markersize=3.2,
+        zorder=4,
+    )
     # slots 2 and 3; the winner's blue is reserved
     for (_, _, color), label in zip(C.SERIES[1:], (RENEWAL_FIT, RENEWAL_EMP)):
-        ax.plot(xs, table[label].to_numpy(), color=color, linewidth=1.3,
-                linestyle=C.MODEL_DASH, marker="o", markersize=3.0, zorder=3)
+        ax.plot(
+            xs,
+            table[label].to_numpy(),
+            color=color,
+            linewidth=1.3,
+            linestyle=C.MODEL_DASH,
+            marker="o",
+            markersize=3.0,
+            zorder=3,
+        )
         entries.append((label, color, 1.3, C.MODEL_DASH))
     # every renewal process with finite gap variance converges to CV^2 from below
     ax.axhline(ceiling, color=C.MUTED, linewidth=0.9, linestyle=(0, (1.5, 1.5)), zorder=2)
@@ -332,21 +414,36 @@ def iat_ccdf() -> None:
     fig.tight_layout(pad=0.3)
     C.save(fig, "fig_iat_ccdf")
 
-    out = pd.DataFrame({"t_s": grid, "trace": surv(g), "GLI_NB": model,
-                        "gamma": laws["Gamma"], "lognormal": laws["Lognormal"],
-                        "exponential": laws["Exponential"]})
+    out = pd.DataFrame(
+        {
+            "t_s": grid,
+            "trace": surv(g),
+            "GLI_NB": model,
+            "gamma": laws["Gamma"],
+            "lognormal": laws["Lognormal"],
+            "exponential": laws["Exponential"],
+        }
+    )
     C.write_csv(out, "fig_iat_ccdf", index=False)
 
     def ks(a, b):
         a, b = np.sort(a), np.sort(b)
         v = np.concatenate([a, b])
-        return float(np.max(np.abs(np.searchsorted(a, v, "right") / len(a)
-                                   - np.searchsorted(b, v, "right") / len(b))))
+        return float(
+            np.max(
+                np.abs(
+                    np.searchsorted(a, v, "right") / len(a)
+                    - np.searchsorted(b, v, "right") / len(b)
+                )
+            )
+        )
 
     print("\nKS against the trace's gaps:")
-    for name, dist, args in (("Exponential", stats.expon, (0, g.mean())),
-                             ("Gamma", stats.gamma, (shape, 0, scale)),
-                             ("Lognormal", stats.lognorm, ln)):
+    for name, dist, args in (
+        ("Exponential", stats.expon, (0, g.mean())),
+        ("Gamma", stats.gamma, (shape, 0, scale)),
+        ("Lognormal", stats.lognorm, ln),
+    ):
         print(f"  {name:12s} {stats.kstest(g[g > 0], dist.cdf, args=args).statistic:.4f}")
     print(f"  {'GLI-NB':12s} {np.median([ks(np.diff(np.sort(t)), g) for t in e['syn']]):.4f}")
 
@@ -361,12 +458,17 @@ def _placement_curves(e: dict) -> tuple:
         return 1.0 - np.searchsorted(s, grid, side="right") / len(s)
 
     ln = stats.lognorm.fit(g[g > 0], floc=0)
-    tab = pd.DataFrame({
-        "Trace": surv(g),
-        "GLI-NB": np.median([surv(np.diff(np.sort(t))) for t in e["syn"]], axis=0),
-        "GLI-NB, iid offsets": np.median([surv(np.diff(np.sort(t))) for t in e["syn_iid"]], axis=0),
-        "Lognormal": 1.0 - stats.lognorm.cdf(grid, *ln),
-    }, index=grid)
+    tab = pd.DataFrame(
+        {
+            "Trace": surv(g),
+            "GLI-NB": np.median([surv(np.diff(np.sort(t))) for t in e["syn"]], axis=0),
+            "GLI-NB, iid offsets": np.median(
+                [surv(np.diff(np.sort(t))) for t in e["syn_iid"]], axis=0
+            ),
+            "Lognormal": 1.0 - stats.lognorm.cdf(grid, *ln),
+        },
+        index=grid,
+    )
     tab.index.name = "t_s"
     return grid, tab
 
@@ -392,8 +494,14 @@ def _placement_panel(e: dict, log_y: bool, name: str, ylabel: str) -> None:
     conv = (lambda y: y) if log_y else (lambda y: 1.0 - y)
     ax.plot(grid, conv(tab["Trace"].to_numpy()), color=C.INK, linewidth=1.5, zorder=5)
     for (_, _, color), label in zip(C.SERIES, labels):
-        ax.plot(grid, conv(tab[label].to_numpy()), color=color, linewidth=1.2,
-                linestyle=C.MODEL_DASH, zorder=4)
+        ax.plot(
+            grid,
+            conv(tab[label].to_numpy()),
+            color=color,
+            linewidth=1.2,
+            linestyle=C.MODEL_DASH,
+            zorder=4,
+        )
         entries.append((label, color, 1.2, C.MODEL_DASH))
 
     ax.set_xscale("log")
@@ -446,9 +554,13 @@ def _events(st) -> tuple:
     t = (pd.DatetimeIndex(st["batch_times"]) - counts.index[0]).total_seconds().to_numpy(float)
     scheme = st["scheme"]
     if isinstance(scheme, dict):
-        scheme = ActivityScheme(edges=tuple(scheme["edges"]), labels=tuple(scheme["labels"]),
-                                busy_threshold=scheme["busy_threshold"],
-                                quiet_threshold=scheme["quiet_threshold"], source=scheme["source"])
+        scheme = ActivityScheme(
+            edges=tuple(scheme["edges"]),
+            labels=tuple(scheme["labels"]),
+            busy_threshold=scheme["busy_threshold"],
+            quiet_threshold=scheme["quiet_threshold"],
+            source=scheme["source"],
+        )
     return np.sort(t), np.asarray(st["batches_sizes"], int), scheme
 
 
@@ -486,14 +598,19 @@ def _independent(occ: np.ndarray) -> pd.Series:
     The reference under independent placement is a curve in n, never a constant.
     """
     n = np.asarray(occ, dtype=float)
-    return _bucket(occ, np.where(n >= 2, (1.0 - 2.0 ** (-1.0 / np.maximum(n, 1))) * (n + 1.0),
-                                 np.nan))
+    return _bucket(
+        occ, np.where(n >= 2, (1.0 - 2.0 ** (-1.0 / np.maximum(n, 1))) * (n + 1.0), np.nan)
+    )
 
 
 def clustering() -> None:
     """Within-bin clustering against bin occupancy, trace against two placements."""
     from seren_countfirst.reconstruct import (
-        make_iid_mark_sampler, OffsetTemplates, PatternTemplates, reconstruct_events)
+        make_iid_mark_sampler,
+        OffsetTemplates,
+        PatternTemplates,
+        reconstruct_events,
+    )
 
     st = C.state()
     counts = st["counts"]
@@ -510,10 +627,20 @@ def clustering() -> None:
     occ, _ = _occupancy(times, bin_s)
     rows = {"Trace": _clustering(times, bin_s), "Uniform, exact": _independent(occ)}
     for label, law in laws.items():
-        reps = [_clustering(reconstruct_events(x, bin_s, np.random.default_rng(C.SEED + 100 + r),
-                                               sampler, offsets=law,
-                                               classes=classes).batch_times_s, bin_s)
-                for r in range(N_REPS)]
+        reps = [
+            _clustering(
+                reconstruct_events(
+                    x,
+                    bin_s,
+                    np.random.default_rng(C.SEED + 100 + r),
+                    sampler,
+                    offsets=law,
+                    classes=classes,
+                ).batch_times_s,
+                bin_s,
+            )
+            for r in range(N_REPS)
+        ]
         rows[label] = pd.DataFrame(reps).median()
     table = pd.DataFrame(rows)
 
@@ -523,13 +650,34 @@ def clustering() -> None:
     entries = [("Trace", C.INK, 1.5, "-")]
 
     # the closed form for independent placement; the panel is the distance below it
-    ax.plot(xs, table["Uniform, exact"].to_numpy(), color=C.MUTED, linewidth=0.9,
-            linestyle=(0, (1.5, 1.5)), zorder=2)
-    ax.plot(xs, table["Trace"].to_numpy(), color=C.INK, linewidth=1.5,
-            marker="o", markersize=3.2, zorder=5)
+    ax.plot(
+        xs,
+        table["Uniform, exact"].to_numpy(),
+        color=C.MUTED,
+        linewidth=0.9,
+        linestyle=(0, (1.5, 1.5)),
+        zorder=2,
+    )
+    ax.plot(
+        xs,
+        table["Trace"].to_numpy(),
+        color=C.INK,
+        linewidth=1.5,
+        marker="o",
+        markersize=3.2,
+        zorder=5,
+    )
     for (_, _, color), label in zip(C.SERIES, laws):
-        ax.plot(xs, table[label].to_numpy(), color=color, linewidth=1.3,
-                linestyle=C.MODEL_DASH, marker="o", markersize=3.0, zorder=4)
+        ax.plot(
+            xs,
+            table[label].to_numpy(),
+            color=color,
+            linewidth=1.3,
+            linestyle=C.MODEL_DASH,
+            marker="o",
+            markersize=3.0,
+            zorder=4,
+        )
         entries.append((label, color, 1.3, C.MODEL_DASH))
     entries.append(("Uniform, exact", C.MUTED, 0.9, (0, (1.5, 1.5))))
 
@@ -564,6 +712,9 @@ VIEWS = {
 }
 
 if __name__ == "__main__":
-    C.run(VIEWS, "cv-window",
-          "The gap side: inter-arrival statistics, and where in a bin the batches land.",
-          INPUTS)
+    C.run(
+        VIEWS,
+        "cv-window",
+        "The gap side: inter-arrival statistics, and where in a bin the batches land.",
+        INPUTS,
+    )

@@ -58,7 +58,7 @@ def acf(x: np.ndarray, lags: Sequence[int]) -> pd.Series:
     x = np.asarray(x, dtype=float)
     out = {}
     if len(x) < 3 or np.std(x) == 0:
-        return pd.Series({int(l): np.nan for l in lags})
+        return pd.Series({int(lag): np.nan for lag in lags})
     xc = x - x.mean()
     denom = float(np.sum(xc * xc))
     for lag in lags:
@@ -132,15 +132,19 @@ def quiet_run_vs_geometric(counts: np.ndarray) -> pd.Series:
     )
 
 
-def rolling_tails(x: np.ndarray, window: int,
-                  quantiles: Sequence[float] = (0.95, 0.99)) -> pd.Series:
+def rolling_tails(
+    x: np.ndarray, window: int, quantiles: Sequence[float] = (0.95, 0.99)
+) -> pd.Series:
     """Return upper quantiles and the maximum of a rolling window sum."""
     x = np.asarray(x, dtype=float)
     if len(x) < window:
-        return pd.Series({f"roll{window}_q{int(q*100)}": np.nan for q in quantiles} | {f"roll{window}_max": np.nan})
+        return pd.Series(
+            {f"roll{window}_q{int(q * 100)}": np.nan for q in quantiles}
+            | {f"roll{window}_max": np.nan}
+        )
     csum = np.r_[0.0, np.cumsum(x)]
     roll = csum[window:] - csum[:-window]
-    out = {f"roll{window}_q{int(q*100)}": float(np.quantile(roll, q)) for q in quantiles}
+    out = {f"roll{window}_q{int(q * 100)}": float(np.quantile(roll, q)) for q in quantiles}
     out[f"roll{window}_max"] = float(roll.max())
     return pd.Series(out)
 
@@ -161,8 +165,9 @@ def wavelet_variance(x: np.ndarray, n_levels: int = 8) -> pd.Series:
     return pd.Series(out)
 
 
-def microstructure(job_times_s: np.ndarray, batch_times_s: np.ndarray,
-                   counts: np.ndarray) -> pd.Series:
+def microstructure(
+    job_times_s: np.ndarray, batch_times_s: np.ndarray, counts: np.ndarray
+) -> pd.Series:
     """Return event-reconstruction fidelity: zero-IAT, positive gaps, empty bins."""
     job_times_s = np.sort(np.asarray(job_times_s, dtype=float))
     batch_times_s = np.sort(np.asarray(batch_times_s, dtype=float))
@@ -207,7 +212,7 @@ def metric_vector(
     parts = [
         pd.Series({"mean": float(x.mean()), "total": float(x.sum()), "n_bins": len(x)}),
         idc_curve(x).add_prefix("IDC_"),
-        acf(x, acf_lags).rename(lambda l: f"ACF_lag{l}"),
+        acf(x, acf_lags).rename(lambda lag: f"ACF_lag{lag}"),
         episode_stats(x, busy_threshold, quiet_threshold),
         wavelet_variance(x),
         pd.Series({"zero_bin_fraction": float((x == 0).mean()), "max_bin": float(x.max())}),
@@ -221,7 +226,7 @@ def d_idc(syn: np.ndarray, trace: np.ndarray, scales: Mapping[str, int] = SCALES
     a, b = idc_curve(syn, scales), idc_curve(trace, scales)
     ratio = np.log(a.to_numpy() / b.to_numpy())
     ratio = ratio[np.isfinite(ratio)]
-    return float(np.mean(ratio ** 2)) if ratio.size else np.nan
+    return float(np.mean(ratio**2)) if ratio.size else np.nan
 
 
 def d_idc_shape(syn: np.ndarray, trace: np.ndarray, scales: Mapping[str, int] = SCALES) -> float:
@@ -229,7 +234,7 @@ def d_idc_shape(syn: np.ndarray, trace: np.ndarray, scales: Mapping[str, int] = 
     a, b = np.log(idc_curve(syn, scales)), np.log(idc_curve(trace, scales))
     diff = (a - a.iloc[0]) - (b - b.iloc[0])
     diff = diff.to_numpy()[np.isfinite(diff.to_numpy())]
-    return float(np.mean(diff ** 2)) if diff.size else np.nan
+    return float(np.mean(diff**2)) if diff.size else np.nan
 
 
 def d_acf(syn: np.ndarray, trace: np.ndarray, max_lag: int = 96) -> float:
@@ -262,8 +267,12 @@ def z_table(
                 "trace": float(trace_metrics[name]),
                 "synthetic": float(syn_metrics[name]),
                 "boot_se": se,
-                "Z": z_score(float(syn_metrics[name]), float(trace_metrics[name]),
-                             se if np.isfinite(se) else eps, eps),
+                "Z": z_score(
+                    float(syn_metrics[name]),
+                    float(trace_metrics[name]),
+                    se if np.isfinite(se) else eps,
+                    eps,
+                ),
             }
         )
     return pd.DataFrame(rows).set_index("metric")

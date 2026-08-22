@@ -69,8 +69,10 @@ def _load_sweep() -> tuple:
 
     rows = []
     for a in ALPHAS:
-        paths = [model.simulate(n_bins, np.random.default_rng(C.SEED + 6 + i), alpha=cal * a)
-                 for i in range(N_PATHS_LOAD)]
+        paths = [
+            model.simulate(n_bins, np.random.default_rng(C.SEED + 6 + i), alpha=cal * a)
+            for i in range(N_PATHS_LOAD)
+        ]
         jobs = np.array([p_.sum() for p_ in paths]) * mean_size / 1e3
         idle = np.array([(p_ == 0).mean() for p_ in paths]) * 100
         vals = np.array([idc(p_) for p_ in paths])
@@ -78,23 +80,25 @@ def _load_sweep() -> tuple:
         # trustworthy where a percentile bootstrap of the mean agrees with it
         draws = boot.integers(0, N_PATHS_LOAD, size=(2000, N_PATHS_LOAD))
         means = jobs[draws].mean(axis=1)
-        rows.append({
-            "alpha": a,
-            "jobs_k": float(jobs.mean()),
-            "jobs_k_sd": float(jobs.std(ddof=1)),
-            "jobs_k_se": float(jobs.std(ddof=1) / np.sqrt(N_PATHS_LOAD)),
-            "path_cv": float(jobs.std(ddof=1) / jobs.mean()),
-            "boot_lo_k": float(np.quantile(means, 0.025)),
-            "boot_hi_k": float(np.quantile(means, 0.975)),
-            "idle_pct": float(idle.mean()),
-            "idle_pct_se": float(idle.std(ddof=1) / np.sqrt(N_PATHS_LOAD)),
-            # the same rate with no burstiness
-            "poisson_idle_pct": float(np.exp(-a * lam1)) * 100,
-            "idc": float(vals.mean()),
-            "idc_median": float(np.median(vals)),
-            "idc_se": float(vals.std(ddof=1) / np.sqrt(N_PATHS_LOAD)),
-            "idc_analytic": A + B * a,
-        })
+        rows.append(
+            {
+                "alpha": a,
+                "jobs_k": float(jobs.mean()),
+                "jobs_k_sd": float(jobs.std(ddof=1)),
+                "jobs_k_se": float(jobs.std(ddof=1) / np.sqrt(N_PATHS_LOAD)),
+                "path_cv": float(jobs.std(ddof=1) / jobs.mean()),
+                "boot_lo_k": float(np.quantile(means, 0.025)),
+                "boot_hi_k": float(np.quantile(means, 0.975)),
+                "idle_pct": float(idle.mean()),
+                "idle_pct_se": float(idle.std(ddof=1) / np.sqrt(N_PATHS_LOAD)),
+                # the same rate with no burstiness
+                "poisson_idle_pct": float(np.exp(-a * lam1)) * 100,
+                "idc": float(vals.mean()),
+                "idc_median": float(np.median(vals)),
+                "idc_se": float(vals.std(ddof=1) / np.sqrt(N_PATHS_LOAD)),
+                "idc_analytic": A + B * a,
+            }
+        )
     _CACHE["load"] = (pd.DataFrame(rows), A, B)
     return _CACHE["load"]
 
@@ -106,8 +110,17 @@ def _load_axes(ax, ylabel: str) -> None:
     ax.set_ylim(0, None)
     ax.set_xticks(list(XTICKS))
     C.style_axes(ax)
-    C.frame_legend(ax.legend(loc="upper left", frameon=True, framealpha=1.0, fontsize=8,
-                             handlelength=2.4, labelspacing=0.35, borderpad=0.5))
+    C.frame_legend(
+        ax.legend(
+            loc="upper left",
+            frameon=True,
+            framealpha=1.0,
+            fontsize=8,
+            handlelength=2.4,
+            labelspacing=0.35,
+            borderpad=0.5,
+        )
+    )
 
 
 def load_arrivals() -> None:
@@ -125,25 +138,61 @@ def load_arrivals() -> None:
     per_unit = float(df.loc[df["alpha"] == 1.0, "jobs_k"].iloc[0])
 
     # the reference is drawn wider and beneath the measured line
-    ax.plot(grid, grid * per_unit, color=C.MUTED, linewidth=1.9,
-            linestyle=(0, (2.4, 2.4)), label="Linear reference", zorder=2)
-    ax.errorbar(a, df["jobs_k"].to_numpy(), yerr=Z95 * df["jobs_k_se"].to_numpy(),
-                color=C.BLUE, linewidth=1.0, marker="o", markersize=4.0,
-                elinewidth=0.9, capsize=2.6, capthick=0.9,
-                label="GLI-NB generated, 95% CI", zorder=3)
+    ax.plot(
+        grid,
+        grid * per_unit,
+        color=C.MUTED,
+        linewidth=1.9,
+        linestyle=(0, (2.4, 2.4)),
+        label="Linear reference",
+        zorder=2,
+    )
+    ax.errorbar(
+        a,
+        df["jobs_k"].to_numpy(),
+        yerr=Z95 * df["jobs_k_se"].to_numpy(),
+        color=C.BLUE,
+        linewidth=1.0,
+        marker="o",
+        markersize=4.0,
+        elinewidth=0.9,
+        capsize=2.6,
+        capthick=0.9,
+        label="GLI-NB generated, 95% CI",
+        zorder=3,
+    )
     _load_axes(ax, "Jobs (thousands)")
     fig.tight_layout(pad=0.4)
     C.save(fig, "fig_load")
 
-    cols = ["alpha", "jobs_k", "jobs_k_sd", "jobs_k_se", "path_cv", "boot_lo_k",
-            "boot_hi_k", "idle_pct", "idle_pct_se", "poisson_idle_pct"]
+    cols = [
+        "alpha",
+        "jobs_k",
+        "jobs_k_sd",
+        "jobs_k_se",
+        "path_cv",
+        "boot_lo_k",
+        "boot_hi_k",
+        "idle_pct",
+        "idle_pct_se",
+        "poisson_idle_pct",
+    ]
     C.write_csv(df[cols], "fig_load", index=False)
     out = df[cols].copy()
     out["linear_ref_k"] = out["alpha"] * per_unit
     out["deviation_%"] = 100 * (out["jobs_k"] / out["linear_ref_k"] - 1)
     out["ci95_%"] = 100 * Z95 * out["jobs_k_se"] / out["jobs_k"]
-    show = ["alpha", "jobs_k", "linear_ref_k", "deviation_%", "ci95_%",
-            "boot_lo_k", "boot_hi_k", "path_cv", "idle_pct"]
+    show = [
+        "alpha",
+        "jobs_k",
+        "linear_ref_k",
+        "deviation_%",
+        "ci95_%",
+        "boot_lo_k",
+        "boot_hi_k",
+        "path_cv",
+        "idle_pct",
+    ]
     print(out[show].round(3).to_string(index=False))
 
 
@@ -158,49 +207,82 @@ def _work_sweep() -> pd.DataFrame:
     from seren_countfirst.data import ActivityScheme
     from seren_countfirst.jobsize import assign_work, read_two_part_jobsize
     from seren_countfirst.reconstruct import (
-        make_iid_mark_sampler, PatternTemplates, reconstruct_events)
+        make_iid_mark_sampler,
+        PatternTemplates,
+        reconstruct_events,
+    )
 
     st = C.state()
     model, cal = C.winner(st)
     counts = st["counts"]
     bin_s = float(counts.bin_seconds)
-    sizes_model = read_two_part_jobsize(C.RESULTS / "jobsize_two_part.json",
-                                        C.RESULTS / "jobsize_pool.npz")
+    sizes_model = read_two_part_jobsize(
+        C.RESULTS / "jobsize_two_part.json", C.RESULTS / "jobsize_pool.npz"
+    )
     scheme = st["scheme"]
     if isinstance(scheme, dict):
-        scheme = ActivityScheme(edges=tuple(scheme["edges"]),
-                                labels=tuple(scheme["labels"]),
-                                busy_threshold=scheme["busy_threshold"],
-                                quiet_threshold=scheme["quiet_threshold"],
-                                source=scheme["source"])
-    times_s = ((pd.DatetimeIndex(st["batch_times"]) - counts.index[0])
-               .total_seconds().to_numpy(dtype=float))
-    templates = PatternTemplates.from_trace(times_s, bin_s, counts.values,
-                                            classes=scheme.classify(counts.values))
+        scheme = ActivityScheme(
+            edges=tuple(scheme["edges"]),
+            labels=tuple(scheme["labels"]),
+            busy_threshold=scheme["busy_threshold"],
+            quiet_threshold=scheme["quiet_threshold"],
+            source=scheme["source"],
+        )
+    times_s = (
+        (pd.DatetimeIndex(st["batch_times"]) - counts.index[0])
+        .total_seconds()
+        .to_numpy(dtype=float)
+    )
+    templates = PatternTemplates.from_trace(
+        times_s, bin_s, counts.values, classes=scheme.classify(counts.values)
+    )
     marks = make_iid_mark_sampler(np.asarray(st["batches_sizes"], dtype=int))
 
     rows = []
     for a in WORK_ALPHAS:
         for i in range(N_PATHS_WORK):
-            syn = model.simulate(len(counts), np.random.default_rng(C.SEED + 4 + i),
-                                 alpha=cal * a)
+            syn = model.simulate(len(counts), np.random.default_rng(C.SEED + 4 + i), alpha=cal * a)
             # sub-second placement throughout: a path that does not fit on whole
             # seconds must not be dropped, which would bias the totals quiet
-            res = reconstruct_events(syn, bin_s, np.random.default_rng(C.SEED + 7000 + i),
-                                     marks, offsets=templates, on_overflow="subsecond",
-                                     alpha=a)
+            res = reconstruct_events(
+                syn,
+                bin_s,
+                np.random.default_rng(C.SEED + 7000 + i),
+                marks,
+                offsets=templates,
+                on_overflow="subsecond",
+                alpha=a,
+            )
             # no alpha here: the counts already carry it
-            work = assign_work(res.batch_times_s, res.batch_sizes, syn, bin_s,
-                               sizes_model, np.random.default_rng(C.SEED + 7000 + i))
+            work = assign_work(
+                res.batch_times_s,
+                res.batch_sizes,
+                syn,
+                bin_s,
+                sizes_model,
+                np.random.default_rng(C.SEED + 7000 + i),
+            )
             big = work >= sizes_model.cut
-            rows.append({"alpha": a, "work": float(work.sum()) / WORK_UNIT,
-                         "large_job_frac": float(big.mean()),
-                         "large_work_share": float(work[big].sum() / work.sum())})
-    df = (pd.DataFrame(rows).groupby("alpha")
-          .agg(work=("work", "mean"), sd=("work", lambda x: x.std(ddof=1)),
-               se=("work", lambda x: x.std(ddof=1) / np.sqrt(len(x))),
-               large_job_frac=("large_job_frac", "mean"),
-               large_work_share=("large_work_share", "mean")).reset_index())
+            rows.append(
+                {
+                    "alpha": a,
+                    "work": float(work.sum()) / WORK_UNIT,
+                    "large_job_frac": float(big.mean()),
+                    "large_work_share": float(work[big].sum() / work.sum()),
+                }
+            )
+    df = (
+        pd.DataFrame(rows)
+        .groupby("alpha")
+        .agg(
+            work=("work", "mean"),
+            sd=("work", lambda x: x.std(ddof=1)),
+            se=("work", lambda x: x.std(ddof=1) / np.sqrt(len(x))),
+            large_job_frac=("large_job_frac", "mean"),
+            large_work_share=("large_work_share", "mean"),
+        )
+        .reset_index()
+    )
     _CACHE["work"] = df
     return df
 
@@ -217,12 +299,29 @@ def load_work() -> None:
     fig, ax = plt.subplots(figsize=(3.5, 2.9))
     grid = np.linspace(0, WORK_ALPHAS[-1] * 1.06, 100)
     unit = float(df.loc[df["alpha"] == 1.0, "work"].iloc[0])
-    ax.plot(grid, grid * unit, color=C.MUTED, linewidth=1.9,
-            linestyle=(0, (2.4, 2.4)), label="Linear reference", zorder=2)
-    ax.errorbar(df["alpha"].to_numpy(), df["work"].to_numpy(),
-                yerr=Z95 * df["se"].to_numpy(), color=C.BLUE, linewidth=1.0,
-                marker="o", markersize=4.0, elinewidth=0.9, capsize=2.6,
-                capthick=0.9, label="GLI-NB generated, 95% CI", zorder=3)
+    ax.plot(
+        grid,
+        grid * unit,
+        color=C.MUTED,
+        linewidth=1.9,
+        linestyle=(0, (2.4, 2.4)),
+        label="Linear reference",
+        zorder=2,
+    )
+    ax.errorbar(
+        df["alpha"].to_numpy(),
+        df["work"].to_numpy(),
+        yerr=Z95 * df["se"].to_numpy(),
+        color=C.BLUE,
+        linewidth=1.0,
+        marker="o",
+        markersize=4.0,
+        elinewidth=0.9,
+        capsize=2.6,
+        capthick=0.9,
+        label="GLI-NB generated, 95% CI",
+        zorder=3,
+    )
     _load_axes(ax, "Offered work (billion units)")
     fig.tight_layout(pad=0.4)
     C.save(fig, "fig_load_work")
@@ -233,14 +332,18 @@ def load_work() -> None:
     C.write_csv(out, "fig_load_work", index=False)
     print(f"offered work in billions of units, {N_PATHS_WORK} paths per load factor:")
     print(out.round(4).to_string(index=False))
-    print("\nthe shortfall against linear is a local reading over this alpha range, "
-          "not a scaling law: work is bracketed by two lines through the origin and "
-          "tends to linear, so no exponent fitted here may be quoted as one")
-    print(f"large jobs carry {out['large_work_share'].iloc[0]:.3f} of the work at "
-          f"alpha = {out['alpha'].iloc[0]}, {out['large_work_share'].iloc[-1]:.3f} at "
-          f"alpha = {out['alpha'].iloc[-1]}, because the per-bin tail rate is flat in "
-          "N_k. That is most of the shortfall, and it is an open claim: the flat rate "
-          "was measured within the trace at one load")
+    print(
+        "\nthe shortfall against linear is a local reading over this alpha range, "
+        "not a scaling law: work is bracketed by two lines through the origin and "
+        "tends to linear, so no exponent fitted here may be quoted as one"
+    )
+    print(
+        f"large jobs carry {out['large_work_share'].iloc[0]:.3f} of the work at "
+        f"alpha = {out['alpha'].iloc[0]}, {out['large_work_share'].iloc[-1]:.3f} at "
+        f"alpha = {out['alpha'].iloc[-1]}, because the per-bin tail rate is flat in "
+        "N_k. That is most of the shortfall, and it is an open claim: the flat rate "
+        "was measured within the trace at one load"
+    )
 
 
 def load_idc() -> None:
@@ -254,12 +357,29 @@ def load_idc() -> None:
     # attenuation is load-invariant, so rescaling by it leaves the shape in alpha
     r = float(df.loc[df["alpha"] == 1.0, "idc"].iloc[0]) / (A + B)
 
-    ax.plot(grid, r * (A + B * grid), color=C.MUTED, linewidth=1.9,
-            linestyle=(0, (2.4, 2.4)), label="Affine reference", zorder=2)
-    ax.errorbar(a, df["idc"].to_numpy(), yerr=Z95 * df["idc_se"].to_numpy(),
-                color=C.BLUE, linewidth=1.0, marker="o", markersize=4.0,
-                elinewidth=0.9, capsize=2.6, capthick=0.9,
-                label="GLI-NB generated, 95% CI", zorder=3)
+    ax.plot(
+        grid,
+        r * (A + B * grid),
+        color=C.MUTED,
+        linewidth=1.9,
+        linestyle=(0, (2.4, 2.4)),
+        label="Affine reference",
+        zorder=2,
+    )
+    ax.errorbar(
+        a,
+        df["idc"].to_numpy(),
+        yerr=Z95 * df["idc_se"].to_numpy(),
+        color=C.BLUE,
+        linewidth=1.0,
+        marker="o",
+        markersize=4.0,
+        elinewidth=0.9,
+        capsize=2.6,
+        capthick=0.9,
+        label="GLI-NB generated, 95% CI",
+        zorder=3,
+    )
     _load_axes(ax, "Index of dispersion (IDC)")
     ax.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda v, _: f"{v:,.0f}"))
     fig.tight_layout(pad=0.4)
@@ -277,8 +397,16 @@ def load_idc() -> None:
     out["ci95_%"] = 100 * Z95 * out["idc_se"] / out["idc"]
     print(f"analytic law: IDC = {A:.3f} + {B:.3f} alpha")
     print(f"finite-length attenuation at alpha = 1: {r:.3f}\n")
-    show = ["alpha", "idc", "idc_median", "idc_analytic", "affine_ref",
-            "dev_vs_affine_%", "dev_vs_proportional_%", "ci95_%"]
+    show = [
+        "alpha",
+        "idc",
+        "idc_median",
+        "idc_analytic",
+        "affine_ref",
+        "dev_vs_affine_%",
+        "dev_vs_proportional_%",
+        "ci95_%",
+    ]
     print(out[show].round(3).to_string(index=False))
 
 
@@ -291,8 +419,7 @@ def horizon_runs() -> None:
     runs = {}
     for days in RUN_HORIZON_D:
         rng = np.random.default_rng(C.SEED + 5)
-        cand = [model.simulate(days * C.BINS_PER_DAY, rng, alpha=cal)
-                for _ in range(N_CANDIDATES)]
+        cand = [model.simulate(days * C.BINS_PER_DAY, rng, alpha=cal) for _ in range(N_CANDIDATES)]
         runs[days] = cand[int(np.argmin([abs(c.mean() - nominal) for c in cand]))]
 
     C.house_style()
@@ -309,18 +436,32 @@ def horizon_runs() -> None:
         ax.set_ylim(0, top)
         C.style_axes(ax)
         # the duration labels the panel instead of a legend
-        ax.text(-0.075, 1.04, f"{days} days", transform=ax.transAxes,
-                color=C.INK, fontsize=10, va="bottom", ha="left")
+        ax.text(
+            -0.075,
+            1.04,
+            f"{days} days",
+            transform=ax.transAxes,
+            color=C.INK,
+            fontsize=10,
+            va="bottom",
+            ha="left",
+        )
 
     axes[-1].set_xlabel("Time (days)")
     fig.supylabel("Arrival rate (batches/h)", color=C.INK, fontsize=9, x=0.005)
     fig.tight_layout(pad=0.4, h_pad=1.0)
     C.save(fig, "fig_horizon_runs")
 
-    rows = [{"days": d, "bins": len(v),
-             "mean_batches_per_h": v.mean() * C.BINS_PER_H,
-             "peak_batches_per_h": v.max() * C.BINS_PER_H,
-             "zero_bin_fraction": float((v == 0).mean())} for d, v in runs.items()]
+    rows = [
+        {
+            "days": d,
+            "bins": len(v),
+            "mean_batches_per_h": v.mean() * C.BINS_PER_H,
+            "peak_batches_per_h": v.max() * C.BINS_PER_H,
+            "zero_bin_fraction": float((v == 0).mean()),
+        }
+        for d, v in runs.items()
+    ]
     C.write_csv(pd.DataFrame(rows), "fig_horizon_runs", index=False)
     print(f"\nnominal {nominal * C.BINS_PER_H:.2f} batches/h")
     print(pd.DataFrame(rows).round(3).to_string(index=False))
@@ -359,12 +500,25 @@ def load_runs() -> None:
         ax.set_ylim(0, top * a)
         C.style_axes(ax)
         ax.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda v, _: f"{v:,.0f}"))
-        ax.text(-0.085, 1.04, f"α = {a:g}", transform=ax.transAxes,
-                color=C.INK, fontsize=10, va="bottom", ha="left")
+        ax.text(
+            -0.085,
+            1.04,
+            f"α = {a:g}",
+            transform=ax.transAxes,
+            color=C.INK,
+            fontsize=10,
+            va="bottom",
+            ha="left",
+        )
         # annotated from the ensemble below, never from the single drawn path
-        rows.append({"alpha": a, "drawn_mean_batches_per_h": v.mean() * C.BINS_PER_H,
-                     "drawn_peak_batches_per_h": v.max() * C.BINS_PER_H,
-                     "drawn_zero_bin_fraction": float((v == 0).mean())})
+        rows.append(
+            {
+                "alpha": a,
+                "drawn_mean_batches_per_h": v.mean() * C.BINS_PER_H,
+                "drawn_peak_batches_per_h": v.max() * C.BINS_PER_H,
+                "drawn_zero_bin_fraction": float((v == 0).mean()),
+            }
+        )
 
     axes[-1].set_xlabel("Time (days)")
     fig.supylabel("Arrival rate (batches/h)", color=C.INK, fontsize=9, x=0.005)
@@ -376,32 +530,46 @@ def load_runs() -> None:
         # one stream per path index, so the load factors are compared on the same
         # paths; a stream per alpha pairs only its first path and lets the rest
         # carry a spurious trend across the sweep
-        ep = [model.simulate(n_bins, np.random.default_rng(C.SEED + 2000 + i), alpha=cal * a)
-              for i in range(N_PATHS_RUN_ENS)]
-        ens.append({"alpha": a,
-                    "idc": float(np.median([idc(p) for p in ep])),
-                    "cv2": float(np.median([p.var(ddof=1) / p.mean() ** 2 for p in ep])),
-                    "zero_bin_fraction": float(np.median([(p == 0).mean() for p in ep])),
-                    "mean_occupied": float(np.median([p[p > 0].mean() for p in ep]))})
+        ep = [
+            model.simulate(n_bins, np.random.default_rng(C.SEED + 2000 + i), alpha=cal * a)
+            for i in range(N_PATHS_RUN_ENS)
+        ]
+        ens.append(
+            {
+                "alpha": a,
+                "idc": float(np.median([idc(p) for p in ep])),
+                "cv2": float(np.median([p.var(ddof=1) / p.mean() ** 2 for p in ep])),
+                "zero_bin_fraction": float(np.median([(p == 0).mean() for p in ep])),
+                "mean_occupied": float(np.median([p[p > 0].mean() for p in ep])),
+            }
+        )
     out = pd.DataFrame(rows).merge(pd.DataFrame(ens), on="alpha")
     C.write_csv(out, "fig_load_runs", index=False)
 
     ref = pool[pick]
     print(f"displaying run {pick} of {len(pool)}, the run arrivals.series shows")
-    print("  redraw reproduces it at alpha = 1: "
-          f"{np.array_equal(C.redraw(model, states[pick], n_bins, cal), ref)}")
-    print("  correlation of each panel with it: "
-          + ", ".join(f"{a:g}: {np.corrcoef(runs[a], ref)[0, 1]:.4f}" for a in RUN_ALPHAS))
+    print(
+        "  redraw reproduces it at alpha = 1: "
+        f"{np.array_equal(C.redraw(model, states[pick], n_bins, cal), ref)}"
+    )
+    print(
+        "  correlation of each panel with it: "
+        + ", ".join(f"{a:g}: {np.corrcoef(runs[a], ref)[0, 1]:.4f}" for a in RUN_ALPHAS)
+    )
     print(f"\nensemble over {N_PATHS_RUN_ENS} paths per load factor:")
     print(out.round(4).to_string(index=False))
     lo, hi = out.iloc[0], out.iloc[-1]
-    print(f"\nacross a {hi['alpha'] / lo['alpha']:.0f}x load range: IDC "
-          f"{lo['idc']:,.0f} -> {hi['idc']:,.0f}, but CV^2 only {lo['cv2']:.1f} -> {hi['cv2']:.1f}. "
-          f"Superposing independent streams would divide CV^2 by {hi['alpha'] / lo['alpha']:.0f}.")
-    print(f"empty bins {lo['zero_bin_fraction']:.3f} -> {hi['zero_bin_fraction']:.3f}; "
-          f"mean count over occupied bins {lo['mean_occupied']:.2f} -> {hi['mean_occupied']:.2f} "
-          f"({hi['mean_occupied'] / lo['mean_occupied']:.1f}x against the "
-          f"{hi['alpha'] / lo['alpha']:.0f}x load)")
+    print(
+        f"\nacross a {hi['alpha'] / lo['alpha']:.0f}x load range: IDC "
+        f"{lo['idc']:,.0f} -> {hi['idc']:,.0f}, but CV^2 only {lo['cv2']:.1f} -> {hi['cv2']:.1f}. "
+        f"Superposing independent streams would divide CV^2 by {hi['alpha'] / lo['alpha']:.0f}."
+    )
+    print(
+        f"empty bins {lo['zero_bin_fraction']:.3f} -> {hi['zero_bin_fraction']:.3f}; "
+        f"mean count over occupied bins {lo['mean_occupied']:.2f} -> {hi['mean_occupied']:.2f} "
+        f"({hi['mean_occupied'] / lo['mean_occupied']:.1f}x against the "
+        f"{hi['alpha'] / lo['alpha']:.0f}x load)"
+    )
 
 
 def combined() -> None:
@@ -415,19 +583,32 @@ def combined() -> None:
     load = []
     for a in COMBINED_ALPHAS:
         rng = np.random.default_rng(C.SEED + 2)
-        vals = [idc(model.simulate(n_bins, rng, alpha=cal * a))
-                for _ in range(N_PATHS_COMBINED_LOAD)]
+        vals = [
+            idc(model.simulate(n_bins, rng, alpha=cal * a)) for _ in range(N_PATHS_COMBINED_LOAD)
+        ]
         load.append({"alpha": a, "idc": float(np.median(vals))})
     load = pd.DataFrame(load)
 
     horizon = []
     for d in COMBINED_HORIZON_D:
         rng = np.random.default_rng(C.SEED + 3)
-        rates = np.array([model.simulate(d * C.BINS_PER_DAY, rng, alpha=cal).mean()
-                          for _ in range(N_PATHS_COMBINED_HORIZON)]) * C.BINS_PER_H
-        horizon.append({"days": d, "median": float(np.median(rates)),
-                        "q025": float(np.quantile(rates, 0.025)),
-                        "q975": float(np.quantile(rates, 0.975))})
+        rates = (
+            np.array(
+                [
+                    model.simulate(d * C.BINS_PER_DAY, rng, alpha=cal).mean()
+                    for _ in range(N_PATHS_COMBINED_HORIZON)
+                ]
+            )
+            * C.BINS_PER_H
+        )
+        horizon.append(
+            {
+                "days": d,
+                "median": float(np.median(rates)),
+                "q025": float(np.quantile(rates, 0.025)),
+                "q975": float(np.quantile(rates, 0.975)),
+            }
+        )
     horizon = pd.DataFrame(horizon)
     nominal = float(model.params_["mean"]) * cal * C.BINS_PER_H
 
@@ -438,10 +619,25 @@ def combined() -> None:
     a = load["alpha"].to_numpy()
     idc_1 = float(load.loc[load["alpha"] == 1.0, "idc"].iloc[0])
     grid = np.linspace(0, COMBINED_ALPHAS[-1] * 1.06, 100)
-    ax1.plot(grid, 1 + grid * (idc_1 - 1), color=C.MUTED, linewidth=1.3,
-             linestyle=(0, (2.2, 2.2)), label="Linear in load factor", zorder=2)
-    ax1.plot(a, load["idc"].to_numpy(), color=C.BLUE, linewidth=0, marker="o",
-             markersize=5.0, label="Measured", zorder=3)
+    ax1.plot(
+        grid,
+        1 + grid * (idc_1 - 1),
+        color=C.MUTED,
+        linewidth=1.3,
+        linestyle=(0, (2.2, 2.2)),
+        label="Linear in load factor",
+        zorder=2,
+    )
+    ax1.plot(
+        a,
+        load["idc"].to_numpy(),
+        color=C.BLUE,
+        linewidth=0,
+        marker="o",
+        markersize=5.0,
+        label="Measured",
+        zorder=3,
+    )
     ax1.set_xlim(0, COMBINED_ALPHAS[-1] * 1.06)
     ax1.set_ylim(0, None)
     ax1.set_xticks([0, 4, 8, 12, 16])
@@ -451,12 +647,33 @@ def combined() -> None:
 
     # (b) horizons
     x = np.arange(len(COMBINED_HORIZON_D), dtype=float)
-    ax2.fill_between(x, horizon["q025"].to_numpy(), horizon["q975"].to_numpy(),
-                     color=BAND_FILL, linewidth=0, label="95% of runs", zorder=1)
-    ax2.axhline(nominal, color=C.MUTED, linewidth=1.3, linestyle=(0, (2.2, 2.2)),
-                label="Nominal rate", zorder=2)
-    ax2.plot(x, horizon["median"].to_numpy(), color=C.BLUE, linewidth=1.7,
-             marker="o", markersize=4.2, label="Median run", zorder=3)
+    ax2.fill_between(
+        x,
+        horizon["q025"].to_numpy(),
+        horizon["q975"].to_numpy(),
+        color=BAND_FILL,
+        linewidth=0,
+        label="95% of runs",
+        zorder=1,
+    )
+    ax2.axhline(
+        nominal,
+        color=C.MUTED,
+        linewidth=1.3,
+        linestyle=(0, (2.2, 2.2)),
+        label="Nominal rate",
+        zorder=2,
+    )
+    ax2.plot(
+        x,
+        horizon["median"].to_numpy(),
+        color=C.BLUE,
+        linewidth=1.7,
+        marker="o",
+        markersize=4.2,
+        label="Median run",
+        zorder=3,
+    )
     ax2.set_xticks(x)
     ax2.set_xticklabels([str(d) for d in COMBINED_HORIZON_D])
     ax2.set_xlim(x[0] - 0.25, x[-1] + 0.25)
@@ -466,11 +683,27 @@ def combined() -> None:
 
     for ax, tag in ((ax1, "(a)"), (ax2, "(b)")):
         C.style_axes(ax)
-        ax.text(-0.17, 1.02, tag, transform=ax.transAxes, color=C.INK,
-                fontsize=10, va="bottom", ha="left")
-        C.frame_legend(ax.legend(loc="upper left", frameon=True, framealpha=1.0,
-                                 fontsize=8, handlelength=2.4, labelspacing=0.35,
-                                 borderpad=0.5))
+        ax.text(
+            -0.17,
+            1.02,
+            tag,
+            transform=ax.transAxes,
+            color=C.INK,
+            fontsize=10,
+            va="bottom",
+            ha="left",
+        )
+        C.frame_legend(
+            ax.legend(
+                loc="upper left",
+                frameon=True,
+                framealpha=1.0,
+                fontsize=8,
+                handlelength=2.4,
+                labelspacing=0.35,
+                borderpad=0.5,
+            )
+        )
 
     fig.tight_layout(pad=0.4, w_pad=2.2)
     C.save(fig, "fig_load_horizon")
@@ -483,8 +716,7 @@ def combined() -> None:
     print("\n(b) horizons:\n", horizon.round(3).to_string(index=False))
 
 
-INPUTS = (
-    "state", "counts", "models", "batch_times", "jobsize_two_part", "jobsize_pool")
+INPUTS = ("state", "counts", "models", "batch_times", "jobsize_two_part", "jobsize_pool")
 
 VIEWS = {
     "load-arrivals": load_arrivals,
@@ -496,5 +728,9 @@ VIEWS = {
 }
 
 if __name__ == "__main__":
-    C.run(VIEWS, "load-arrivals",
-          "Generator properties: the load knob and behaviour across horizons.", INPUTS)
+    C.run(
+        VIEWS,
+        "load-arrivals",
+        "Generator properties: the load knob and behaviour across horizons.",
+        INPUTS,
+    )

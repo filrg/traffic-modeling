@@ -12,8 +12,9 @@ from .folds import evaluate_on_folds
 from .gates import GateEvidence, GateReport, evaluate_gates
 
 
-def summary_scores(trace_counts: np.ndarray, syn_paths: Sequence[np.ndarray],
-                   busy_threshold: float) -> pd.Series:
+def summary_scores(
+    trace_counts: np.ndarray, syn_paths: Sequence[np.ndarray], busy_threshold: float
+) -> pd.Series:
     """Return the ranking score; meaningful only among candidates that passed the gates."""
     trace = np.asarray(trace_counts, dtype=float)
     return pd.Series(
@@ -24,7 +25,9 @@ def summary_scores(trace_counts: np.ndarray, syn_paths: Sequence[np.ndarray],
             "zero_bin_abs_error": float(
                 np.mean([abs((p == 0).mean() - (trace == 0).mean()) for p in syn_paths])
             ),
-            "rate_abs_error": float(np.mean([abs(p.mean() / trace.mean() - 1.0) for p in syn_paths])),
+            "rate_abs_error": float(
+                np.mean([abs(p.mean() / trace.mean() - 1.0) for p in syn_paths])
+            ),
         }
     )
 
@@ -55,14 +58,27 @@ def evaluate_candidate(
     fold_ev = base.fold_evidence
     if folds:
         fold_ev = evaluate_on_folds(
-            model, folds, busy_threshold, seed=seed, **sim_kwargs,
+            model,
+            folds,
+            busy_threshold,
+            seed=seed,
+            **sim_kwargs,
             n_paths=fold_n_paths if fold_n_paths is not None else min(n_paths, 10),
         )
-    ev = replace(base, fold_evidence=fold_ev,
-                 scaling=base.scaling if scaling is None else scaling,
-                 idc_envelope=base.idc_envelope if idc_envelope is None else idc_envelope)
-    gates = evaluate_gates(trace_counts, paths, busy_threshold, envelope,
-                           stop_at_first_failure=stop_at_first_failure, evidence=ev)
+    ev = replace(
+        base,
+        fold_evidence=fold_ev,
+        scaling=base.scaling if scaling is None else scaling,
+        idc_envelope=base.idc_envelope if idc_envelope is None else idc_envelope,
+    )
+    gates = evaluate_gates(
+        trace_counts,
+        paths,
+        busy_threshold,
+        envelope,
+        stop_at_first_failure=stop_at_first_failure,
+        evidence=ev,
+    )
     scores = summary_scores(trace_counts, paths, busy_threshold)
     return {
         "model": model.name,
@@ -91,7 +107,8 @@ def benchmark_table(results: Sequence[dict[str, object]]) -> pd.DataFrame:
                 "gates_passed": gates.passed,
                 "first_failed_gate": fail.name if fail else "-",
                 **r["scores"].to_dict(),
-                "boundary_warnings": "; ".join((r["fit"] or {}).get("boundary_warnings", [])) or "-",
+                "boundary_warnings": "; ".join((r["fit"] or {}).get("boundary_warnings", []))
+                or "-",
             }
         )
     return pd.DataFrame(rows).sort_values(["gates_passed", "D_IDC"], ascending=[False, True])

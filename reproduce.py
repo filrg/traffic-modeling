@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import filecmp
-import json
 import os
 import subprocess
 import sys
@@ -12,25 +11,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 from seren_countfirst.provenance import environment  # noqa: E402
+from seren_countfirst.artifacts import write_json  # noqa: E402
+from seren_countfirst.run_pipeline import REPRODUCTION_STEPS  # noqa: E402
 
 # (argv, approximate minutes, whether --quick skips it). `fit` consumes the rest
 # of its line as rung names, so it cannot share an invocation with another stage.
 STAGES: list[tuple[list[str], float, bool]] = [
-    (["data"], 0.6, False),
-    (["fit", "r2", "r3", "r4"], 2.0, False),
-    (["fit", "gated"], 4.0, False),
-    (["fit", "mm", "mm2", "mm3", "mm4", "mm5"], 0.5, False),
-    (["fit", "onoff", "ingarch", "nogate"], 0.4, False),
-    (["evaluate"], 2.0, False),
-    (["scaling"], 3.0, False),
-    (["horizon"], 2.0, False),
-    (["reconstruct"], 2.0, False),
-    (["baselines"], 1.0, False),
-    (["jobsize"], 34.0, True),
-    (["jobsize_folds"], 11.0, True),
-    (["export"], 0.2, False),
-    (["workload"], 0.7, False),
-    (["certify"], 15.0, True),
+    (list(step.argv), step.approximate_minutes, step.skip_in_quick_run)
+    for step in REPRODUCTION_STEPS
 ]
 
 
@@ -45,11 +33,12 @@ def run(target: Path, quick: bool) -> list[dict]:
         print(f"--- {' '.join(argv)} (~{minutes:.0f} min)", flush=True)
         t0 = time.time()
         proc = subprocess.run(
-            [sys.executable, "-m", "seren_countfirst.run_pipeline", *argv],
-            cwd=REPO, env=env)
+            [sys.executable, "-m", "seren_countfirst.run_pipeline", *argv], cwd=REPO, env=env
+        )
         dt = time.time() - t0
-        log.append({"stage": " ".join(argv), "seconds": round(dt, 1),
-                    "returncode": proc.returncode})
+        log.append(
+            {"stage": " ".join(argv), "seconds": round(dt, 1), "returncode": proc.returncode}
+        )
         print(f"    {dt:.0f}s, exit {proc.returncode}", flush=True)
         if proc.returncode:
             raise SystemExit(f"stage `{' '.join(argv)}` failed")
@@ -83,22 +72,38 @@ def compare(target: Path, published: Path) -> int:
 def main() -> None:
     ap = argparse.ArgumentParser(
         description="Rebuild every published artifact from the trace, and optionally "
-                    "diff the rebuild against the published one.")
-    ap.add_argument("--into", type=Path, default=REPO / "results_repro",
-                    help="where to write the rebuild (default: results_repro/)")
-    ap.add_argument("--quick", action="store_true",
-                    help="skip jobsize, jobsize_folds and certify (~60 of the ~80 minutes)")
-    ap.add_argument("--verify", action="store_true",
-                    help="after the run, diff it against results/ and exit non-zero on any difference")
+        "diff the rebuild against the published one."
+    )
+    ap.add_argument(
+        "--into",
+        type=Path,
+        default=REPO / "results_repro",
+        help="where to write the rebuild (default: results_repro/)",
+    )
+    ap.add_argument(
+        "--quick",
+        action="store_true",
+        help="skip jobsize, jobsize_folds and certify (~60 of the ~80 minutes)",
+    )
+    ap.add_argument(
+        "--verify",
+        action="store_true",
+        help="after the run, diff it against results/ and exit non-zero on any difference",
+    )
     args = ap.parse_args()
 
     t0 = time.time()
     log = run(args.into, args.quick)
-    manifest = {"environment": environment(), "quick": args.quick,
-                "total_seconds": round(time.time() - t0, 1), "stages": log}
-    (args.into / "run_manifest.json").write_text(json.dumps(manifest, indent=2),
-                                                 encoding="utf-8")
-    print(f"\nwrote {args.into / 'run_manifest.json'}; {manifest['total_seconds'] / 60:.0f} min total")
+    manifest = {
+        "environment": environment(),
+        "quick": args.quick,
+        "total_seconds": round(time.time() - t0, 1),
+        "stages": log,
+    }
+    write_json(manifest, args.into / "run_manifest.json")
+    print(
+        f"\nwrote {args.into / 'run_manifest.json'}; {manifest['total_seconds'] / 60:.0f} min total"
+    )
 
     if args.verify:
         print(f"\ndiffing {args.into} against {REPO / 'results'}:")

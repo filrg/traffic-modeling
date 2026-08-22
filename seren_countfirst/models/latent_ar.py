@@ -17,6 +17,7 @@ from .ar1 import (
 from .base import CalendarTerm, CountModel, FitReport
 from .nb import nb2_info_eta, nb2_loglik, nb2_sample, nb2_score_eta
 
+
 class NBLatentAR(CountModel):
     """NB counts over a sum of stationary AR(1) latents.
 
@@ -42,19 +43,31 @@ class NBLatentAR(CountModel):
             mu, log_s_slow, log_s_fast, log_tau_fast, log_gap, log_kappa = theta
             sigma = np.array([np.exp(log_s_slow), np.exp(log_s_fast)])
             tau_fast = np.exp(log_tau_fast)
-            tau = np.array([tau_fast + np.exp(log_gap), tau_fast])  # gap parameterisation identifies the order
+            tau = np.array(
+                [tau_fast + np.exp(log_gap), tau_fast]
+            )  # gap parameterisation identifies the order
         return float(mu), sigma, tau, float(np.exp(np.clip(log_kappa, -20, 20)))
 
-    def _eta(self, mu: float, sigma: np.ndarray, x: np.ndarray,
-             offset: np.ndarray | None) -> np.ndarray:
-        eta = mu - 0.5 * float(np.sum(sigma ** 2)) + x.reshape(self.n_components, -1).sum(axis=0)
+    def _eta(
+        self, mu: float, sigma: np.ndarray, x: np.ndarray, offset: np.ndarray | None
+    ) -> np.ndarray:
+        eta = mu - 0.5 * float(np.sum(sigma**2)) + x.reshape(self.n_components, -1).sum(axis=0)
         if offset is not None:
             eta = eta + offset
         return np.clip(eta, -30.0, 30.0)
 
-    def _mode(self, n: np.ndarray, mu: float, sigma: np.ndarray, tau: np.ndarray, kappa: float,
-              offset: np.ndarray | None, x0: np.ndarray | None, max_iter: int = 60,
-              tol: float = 1e-7) -> tuple[np.ndarray, sp.csc_matrix, float, float]:
+    def _mode(
+        self,
+        n: np.ndarray,
+        mu: float,
+        sigma: np.ndarray,
+        tau: np.ndarray,
+        kappa: float,
+        offset: np.ndarray | None,
+        x0: np.ndarray | None,
+        max_iter: int = 60,
+        tol: float = 1e-7,
+    ) -> tuple[np.ndarray, sp.csc_matrix, float, float]:
         T = len(n)
         J = self.n_components
         phi = np.array([half_life_to_phi(t) for t in tau])
@@ -66,7 +79,7 @@ class NBLatentAR(CountModel):
             lam = np.exp(eta)
             val = nb2_loglik(n, lam, kappa)
             for j in range(J):
-                xj = xv[j * T:(j + 1) * T]
+                xj = xv[j * T : (j + 1) * T]
                 val -= 0.5 * float(xj @ (Q[j] @ xj))
             return val
 
@@ -78,7 +91,7 @@ class NBLatentAR(CountModel):
             lam = np.exp(eta)
             s = nb2_score_eta(n, lam, kappa)
             w = np.maximum(nb2_info_eta(n, lam, kappa), 1e-10)
-            grad = np.concatenate([s - Q[j] @ x[j * T:(j + 1) * T] for j in range(J)])
+            grad = np.concatenate([s - Q[j] @ x[j * T : (j + 1) * T] for j in range(J)])
             grad_norm = float(np.linalg.norm(grad) / np.sqrt(grad.size))
             if grad_norm < tol:
                 break
@@ -109,8 +122,13 @@ class NBLatentAR(CountModel):
         H = (Q[0] + W).tocsc() if J == 1 else sp.bmat([[Q[0] + W, W], [W, Q[1] + W]], format="csc")
         return x, H, cur, grad_norm
 
-    def _laplace_loglik(self, n: np.ndarray, theta: np.ndarray, offset: np.ndarray | None,
-                        x0: np.ndarray | None = None) -> tuple[float, np.ndarray, float]:
+    def _laplace_loglik(
+        self,
+        n: np.ndarray,
+        theta: np.ndarray,
+        offset: np.ndarray | None,
+        x0: np.ndarray | None = None,
+    ) -> tuple[float, np.ndarray, float]:
         mu, sigma, tau, kappa = self._unpack(theta)
         if not np.all(np.isfinite([mu, kappa])) or np.any(sigma <= 0) or np.any(tau <= 0):
             return -np.inf, np.zeros(self.n_components * len(n)), np.inf
@@ -142,27 +160,34 @@ class NBLatentAR(CountModel):
         H = int(min(max_lag, len(n) // 4))
         lags = np.arange(1, max(H, 2))
         gamma = np.array([float(np.sum(nc[:-h] * nc[h:])) / len(n) for h in lags])
-        C_hat = np.log(np.clip(1.0 + gamma / m ** 2, 1e-6, None))
+        C_hat = np.log(np.clip(1.0 + gamma / m**2, 1e-6, None))
         ok = np.isfinite(C_hat) & (C_hat > 0)
         w = 1.0 / np.sqrt(1.0 + lags)
 
         if self.n_components == 1:
+
             def resid(p):
                 a, phi = np.exp(p[0]), 1.0 / (1.0 + np.exp(-p[1]))
                 return w[ok] * (a * phi ** lags[ok] - C_hat[ok])
+
             p0 = [np.log(max(C_hat[ok][0], 1e-3)) if ok.any() else 0.0, 1.0]
             sol = least_squares(resid, p0, max_nfev=400)
             a = np.array([np.exp(sol.x[0])])
             phi = np.array([1.0 / (1.0 + np.exp(-sol.x[1]))])
         else:
+
             def resid(p):
                 a_s, a_f = np.exp(p[0]), np.exp(p[1])
                 phi_f = 1.0 / (1.0 + np.exp(-p[2]))
                 phi_s = phi_f + (1.0 - phi_f) / (1.0 + np.exp(-p[3]))  # enforces phi_s > phi_f
                 return w[ok] * (a_s * phi_s ** lags[ok] + a_f * phi_f ** lags[ok] - C_hat[ok])
+
             c0 = float(C_hat[ok][0]) if ok.any() else 0.5
-            sol = least_squares(resid, [np.log(max(0.5 * c0, 1e-3)), np.log(max(0.5 * c0, 1e-3)), 0.0, 1.5],
-                                max_nfev=800)
+            sol = least_squares(
+                resid,
+                [np.log(max(0.5 * c0, 1e-3)), np.log(max(0.5 * c0, 1e-3)), 0.0, 1.5],
+                max_nfev=800,
+            )
             a_s, a_f = np.exp(sol.x[0]), np.exp(sol.x[1])
             phi_f = 1.0 / (1.0 + np.exp(-sol.x[2]))
             phi_s = phi_f + (1.0 - phi_f) / (1.0 + np.exp(-sol.x[3]))
@@ -172,18 +197,33 @@ class NBLatentAR(CountModel):
         phi = np.clip(phi, 1e-4, 1 - 1e-6)
         V = float(a.sum())
         gamma0 = float(n.var(ddof=1))
-        resid_var = gamma0 - m - m ** 2 * (np.exp(V) - 1.0)
-        kappa = float(np.clip(m ** 2 * np.exp(V) / resid_var, 1e-3, 1e4)) if resid_var > 0 else 1e3
+        resid_var = gamma0 - m - m**2 * (np.exp(V) - 1.0)
+        kappa = float(np.clip(m**2 * np.exp(V) / resid_var, 1e-3, 1e4)) if resid_var > 0 else 1e3
         tau = np.array([phi_to_half_life(p) for p in phi])
 
         if self.n_components == 1:
             return np.array([np.log(m), 0.5 * np.log(a[0]), np.log(tau[0]), np.log(kappa)])
         gap = max(tau[0] - tau[1], 1e-2)
-        return np.array([np.log(m), 0.5 * np.log(a[0]), 0.5 * np.log(a[1]),
-                         np.log(max(tau[1], 1e-2)), np.log(gap), np.log(kappa)])
+        return np.array(
+            [
+                np.log(m),
+                0.5 * np.log(a[0]),
+                0.5 * np.log(a[1]),
+                np.log(max(tau[1], 1e-2)),
+                np.log(gap),
+                np.log(kappa),
+            ]
+        )
 
-    def fit(self, counts: np.ndarray, hour_of_week: np.ndarray | None = None, n_restarts: int = 3,
-            maxiter: int = 900, verbose: bool = False, seed: int = 0) -> "NBLatentAR":
+    def fit(
+        self,
+        counts: np.ndarray,
+        hour_of_week: np.ndarray | None = None,
+        n_restarts: int = 3,
+        maxiter: int = 900,
+        verbose: bool = False,
+        seed: int = 0,
+    ) -> "NBLatentAR":
         self._check_mutable()
         n = np.asarray(counts, dtype=float)
         offset = None
@@ -207,8 +247,9 @@ class NBLatentAR(CountModel):
             key = np.round(theta, 8).tobytes()
             if key in cache:
                 return -cache[key][0]
-            ll, x_hat, gnorm = self._laplace_loglik(n, np.asarray(theta, dtype=float),
-                                                    offset, warm["x"])
+            ll, x_hat, gnorm = self._laplace_loglik(
+                n, np.asarray(theta, dtype=float), offset, warm["x"]
+            )
             if np.isfinite(ll):
                 warm["x"] = x_hat
             cache[key] = (ll, x_hat, gnorm)
@@ -217,11 +258,23 @@ class NBLatentAR(CountModel):
         best, best_theta, best_res = np.inf, None, None
         for theta0 in starts:
             warm["x"] = None
-            res = minimize(negll, theta0, method="L-BFGS-B",
-                           options={"maxiter": maxiter, "maxfun": 6 * maxiter, "eps": 1e-4, "ftol": 1e-10})
-            res = minimize(negll, res.x, method="Nelder-Mead",
-                           options={"maxiter": max(maxiter // 4, 60), "xatol": 1e-4, "fatol": 1e-3,
-                                    "adaptive": True})
+            res = minimize(
+                negll,
+                theta0,
+                method="L-BFGS-B",
+                options={"maxiter": maxiter, "maxfun": 6 * maxiter, "eps": 1e-4, "ftol": 1e-10},
+            )
+            res = minimize(
+                negll,
+                res.x,
+                method="Nelder-Mead",
+                options={
+                    "maxiter": max(maxiter // 4, 60),
+                    "xatol": 1e-4,
+                    "fatol": 1e-3,
+                    "adaptive": True,
+                },
+            )
             if verbose:
                 print(f"  restart -> nll {res.fun:.2f} converged={res.success}")
             if res.fun < best:
@@ -239,7 +292,9 @@ class NBLatentAR(CountModel):
         if self.n_components == 2 and abs(np.log(tau[0] / tau[1])) < np.log(1.5):
             warnings.append("half-lives collapsed to one scale: prefer NBLatentAR(1)")
         if np.any(phi > 1 - 1e-6):
-            warnings.append("phi at unit-root boundary: slow scale is not identified on this horizon")
+            warnings.append(
+                "phi at unit-root boundary: slow scale is not identified on this horizon"
+            )
         if kappa > 1e4:
             warnings.append("kappa very large: observation overdispersion vanished into the latent")
 
@@ -250,15 +305,29 @@ class NBLatentAR(CountModel):
             "phi": phi,
             "half_life_bins": tau,
             "kappa": float(kappa),
-            "V": float(np.sum(sigma ** 2)),
+            "V": float(np.sum(sigma**2)),
         }
-        self.report = FitReport(bool(best_res.success), int(best_res.nit), float(gnorm), float(ll),
-                                len(best_theta), len(n), warnings, restarts=len(starts))
+        self.report = FitReport(
+            bool(best_res.success),
+            int(best_res.nit),
+            float(gnorm),
+            float(ll),
+            len(best_theta),
+            len(n),
+            warnings,
+            restarts=len(starts),
+        )
         return self
 
-    def simulate(self, n_bins: int, rng: np.random.Generator, alpha: float = 1.0,
-                 kappa_rule: str = "proportional", hour_of_week: np.ndarray | None = None,
-                 return_intensity: bool = False):
+    def simulate(
+        self,
+        n_bins: int,
+        rng: np.random.Generator,
+        alpha: float = 1.0,
+        kappa_rule: str = "proportional",
+        hour_of_week: np.ndarray | None = None,
+        return_intensity: bool = False,
+    ):
         p = self.params_
         sigma, phi = np.asarray(p["sigma"]), np.asarray(p["phi"])
         x = np.zeros((self.n_components, n_bins))

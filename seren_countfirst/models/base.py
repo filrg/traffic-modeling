@@ -7,6 +7,7 @@ import numpy as np
 
 from .nb import nb2_info_eta, nb2_score_eta
 
+
 @dataclass
 class CalendarTerm:
     """Normalised low-order Fourier hour-of-week offset. Ablation only."""
@@ -24,9 +25,14 @@ class CalendarTerm:
         return np.column_stack(cols)
 
     @classmethod
-    def fit(cls, counts: np.ndarray, hour_of_week: np.ndarray, n_harmonics: int = 3,
-            kappa: float = 1.0,
-            max_iter: int = 100) -> "CalendarTerm":
+    def fit(
+        cls,
+        counts: np.ndarray,
+        hour_of_week: np.ndarray,
+        n_harmonics: int = 3,
+        kappa: float = 1.0,
+        max_iter: int = 100,
+    ) -> "CalendarTerm":
         X = cls.design(hour_of_week, n_harmonics)
         beta = np.zeros(X.shape[1])
         beta[0] = np.log(max(np.mean(counts), 1e-6))
@@ -85,6 +91,29 @@ class FitReport:
             "restarts": self.restarts,
         }
 
+    @classmethod
+    def from_dict(cls, blob: dict[str, Any]) -> "FitReport":
+        n_obs = blob.get("n_obs")
+        if n_obs is None:
+            bic = blob.get("BIC")
+            loglik = blob.get("loglik")
+            n_params = blob.get("n_params")
+            if None not in (bic, loglik, n_params) and n_params:
+                criterion = (float(bic) + 2.0 * float(loglik)) / int(n_params)
+                n_obs = int(round(float(np.exp(criterion))))
+            else:
+                n_obs = 0
+        return cls(
+            converged=bool(blob.get("converged", False)),
+            n_iter=int(blob.get("n_iter", 0)),
+            grad_norm=float(blob.get("grad_norm", np.nan)),
+            loglik=float(blob.get("loglik", np.nan)),
+            n_params=int(blob.get("n_params", 0)),
+            n_obs=int(n_obs),
+            boundary_warnings=list(blob.get("boundary_warnings", [])),
+            restarts=int(blob.get("restarts", 1)),
+        )
+
 
 class CountModel:
     """Interface shared by every rung of the ladder."""
@@ -102,8 +131,14 @@ class CountModel:
     def fit(self, counts: np.ndarray, **kwargs) -> "CountModel":  # pragma: no cover
         raise NotImplementedError
 
-    def simulate(self, n_bins: int, rng: np.random.Generator, alpha: float = 1.0,
-                 kappa_rule: str = "proportional", **kwargs) -> np.ndarray:  # pragma: no cover
+    def simulate(
+        self,
+        n_bins: int,
+        rng: np.random.Generator,
+        alpha: float = 1.0,
+        kappa_rule: str = "proportional",
+        **kwargs,
+    ) -> np.ndarray:  # pragma: no cover
         raise NotImplementedError
 
     def freeze(self) -> "CountModel":
@@ -132,6 +167,8 @@ class CountModel:
         return {
             "name": self.name,
             "rung": self.rung,
-            "params": {k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in self.params_.items()},
+            "params": {
+                k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in self.params_.items()
+            },
             "fit": self.report.to_dict() if self.report else None,
         }

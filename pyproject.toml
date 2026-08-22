@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "seren-countfirst"
+version = "0.1.0"
+description = "Trace-calibrated count-first arrival and job-size generator for LLM fine-tuning workloads"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "scipy>=1.13",
+]
+
+[project.optional-dependencies]
+figures = ["matplotlib>=3.8"]
+dev = [
+    "pyflakes>=3.2",
+    "pytest>=8.0",
+    "ruff>=0.12",
+]
+
+[project.scripts]
+seren-pipeline = "seren_countfirst.run_pipeline.__main__:cli"
+
+[tool.setuptools.packages.find]
+include = ["seren_countfirst*"]
+
+[tool.pytest.ini_options]
+testpaths = ["seren_countfirst/tests"]
+markers = [
+    "slow: takes more than a few seconds; excluded by `-m 'not slow'`",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [
+    ".internal-backups",
+    "docs",
+    "results*",
+    "seren_countfirst/tests",
+]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

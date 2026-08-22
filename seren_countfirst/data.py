@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Mapping, cast
 
 import numpy as np
 import pandas as pd
@@ -168,17 +169,21 @@ class Split:
             cs = getattr(self, part)
             if cs is None:
                 continue
-            rows.append({"part": part, "start": cs.index[0], "end": cs.index[-1], **cs.summary().to_dict()})
+            rows.append(
+                {"part": part, "start": cs.index[0], "end": cs.index[-1], **cs.summary().to_dict()}
+            )
         return pd.DataFrame(rows)
 
 
-def contiguous_split(counts: CountSeries,
-                     fractions: tuple[float, float, float] = (0.6, 0.2, 0.2)) -> Split:
+def contiguous_split(
+    counts: CountSeries, fractions: tuple[float, float, float] = (0.6, 0.2, 0.2)
+) -> Split:
     n = len(counts)
     a = int(round(n * fractions[0]))
     b = a + int(round(n * fractions[1]))
-    return Split("contiguous", counts.slice_bins(0, a), counts.slice_bins(a, b),
-                 counts.slice_bins(b, n))
+    return Split(
+        "contiguous", counts.slice_bins(0, a), counts.slice_bins(a, b), counts.slice_bins(b, n)
+    )
 
 
 def expanding_window_folds(
@@ -199,8 +204,11 @@ def expanding_window_folds(
     origins = np.linspace(min_train, last_origin, n_folds).astype(int)
     for k, origin in enumerate(np.unique(origins), start=1):
         folds.append(
-            Split(f"expanding_{k}", counts.slice_bins(0, origin),
-                  counts.slice_bins(origin, origin + val_bins))
+            Split(
+                f"expanding_{k}",
+                counts.slice_bins(0, origin),
+                counts.slice_bins(origin, origin + val_bins),
+            )
         )
     return folds
 
@@ -216,14 +224,16 @@ class ActivityScheme:
     source: str = "train"
 
     @classmethod
-    def fit(cls, counts: CountSeries, quantiles=(0.50, 0.80, 0.95),
-            busy_q: float = 0.80) -> "ActivityScheme":
+    def fit(
+        cls, counts: CountSeries, quantiles=(0.50, 0.80, 0.95), busy_q: float = 0.80
+    ) -> "ActivityScheme":
         occupied = counts.values[counts.values > 0]
         if occupied.size == 0:
             raise ValueError("no occupied bins: cannot fit activity thresholds")
         q = tuple(float(x) for x in np.quantile(occupied, quantiles))
-        return cls(edges=q, busy_threshold=float(np.quantile(occupied, busy_q)),
-                   quiet_threshold=0.0)
+        return cls(
+            edges=q, busy_threshold=float(np.quantile(occupied, busy_q)), quiet_threshold=0.0
+        )
 
     def classify(self, values: np.ndarray) -> np.ndarray:
         v = np.asarray(values, dtype=float)
@@ -233,7 +243,20 @@ class ActivityScheme:
         out[v <= self.edges[0]] = self.labels[0]
         return out
 
-    def to_dict(self) -> dict:
+    @classmethod
+    def from_dict(cls, blob: Mapping[str, Any]) -> "ActivityScheme":
+        raw_edges = tuple(float(value) for value in blob["edges"])
+        if len(raw_edges) != 3:
+            raise ValueError("activity scheme requires exactly three edges")
+        return cls(
+            edges=cast(tuple[float, float, float], raw_edges),
+            labels=tuple(blob["labels"]),
+            busy_threshold=float(blob["busy_threshold"]),
+            quiet_threshold=float(blob["quiet_threshold"]),
+            source=str(blob["source"]),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "edges": list(self.edges),
             "labels": list(self.labels),

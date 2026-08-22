@@ -10,6 +10,7 @@ from .base import CountModel, FitReport
 from .latent_ar import NBLatentAR
 from .nb import nb2_sample
 
+
 class NBRegimeSwitch(CountModel):
     """Two-state Markov level with NB2 emissions, plus an optional fast AR(1).
 
@@ -77,8 +78,15 @@ class NBRegimeSwitch(CountModel):
             xi += num / max(num.sum(), 1e-300)
         return gamma, xi, float(scale.sum())
 
-    def fit(self, counts: np.ndarray, max_iter: int = 200, tol: float = 1e-6, seed: int = 0,
-            n_restarts: int = 3, **kwargs) -> "NBRegimeSwitch":
+    def fit(
+        self,
+        counts: np.ndarray,
+        max_iter: int = 200,
+        tol: float = 1e-6,
+        seed: int = 0,
+        n_restarts: int = 3,
+        **kwargs,
+    ) -> "NBRegimeSwitch":
         self._check_mutable()
         n = np.asarray(counts, dtype=float)
         T, K = len(n), self.n_states
@@ -107,8 +115,12 @@ class NBRegimeSwitch(CountModel):
                     lb = self._emission_loglik(n, lam_k, kap)
                     return -float(np.sum(gamma * lb))
 
-                res = minimize(nll, np.r_[np.log(lam), np.log(kappa)], method="Nelder-Mead",
-                               options={"maxiter": 1200, "xatol": 1e-7, "fatol": 1e-7})
+                res = minimize(
+                    nll,
+                    np.r_[np.log(lam), np.log(kappa)],
+                    method="Nelder-Mead",
+                    options={"maxiter": 1200, "xatol": 1e-7, "fatol": 1e-7},
+                )
                 lam = np.sort(np.exp(np.clip(res.x[:K], -30, 30)))
                 kappa = float(np.exp(np.clip(res.x[K], -20, 20)))
                 if abs(ll - prev_ll) < tol * max(1.0, abs(prev_ll)):
@@ -118,8 +130,15 @@ class NBRegimeSwitch(CountModel):
                 prev_ll = ll
 
             if best is None or prev_ll > best["ll"]:
-                best = {"ll": prev_ll, "lam": lam, "kappa": kappa, "P": P, "pi": pi,
-                        "converged": converged, "n_iter": it}
+                best = {
+                    "ll": prev_ll,
+                    "lam": lam,
+                    "kappa": kappa,
+                    "P": P,
+                    "pi": pi,
+                    "converged": converged,
+                    "n_iter": it,
+                }
 
         lam, kappa, P, pi = best["lam"], best["kappa"], best["P"], best["pi"]
         n_params = K + 1 + K * (K - 1)
@@ -145,14 +164,25 @@ class NBRegimeSwitch(CountModel):
             self.params_.update(fast)
             n_params += 2
             loglik = fast.pop("_loglik_conditional", loglik)
-            warnings.append("fast AR(1) fitted conditionally on the Viterbi path (approximate likelihood)")
+            warnings.append(
+                "fast AR(1) fitted conditionally on the Viterbi path (approximate likelihood)"
+            )
 
-        self.report = FitReport(bool(best["converged"]), int(best["n_iter"]), 0.0, float(loglik),
-                                n_params, T, warnings, restarts=n_restarts)
+        self.report = FitReport(
+            bool(best["converged"]),
+            int(best["n_iter"]),
+            0.0,
+            float(loglik),
+            n_params,
+            T,
+            warnings,
+            restarts=n_restarts,
+        )
         return self
 
-    def _viterbi(self, n: np.ndarray, lam: np.ndarray, kappa: float, P: np.ndarray,
-                 pi: np.ndarray) -> np.ndarray:
+    def _viterbi(
+        self, n: np.ndarray, lam: np.ndarray, kappa: float, P: np.ndarray, pi: np.ndarray
+    ) -> np.ndarray:
         logB = self._emission_loglik(n, lam, kappa)
         T, K = logB.shape
         delta = np.log(pi + 1e-300) + logB[0]
@@ -179,12 +209,18 @@ class NBRegimeSwitch(CountModel):
             tau = np.exp(np.clip(theta[1], -3, 6))
             kap = np.exp(np.clip(theta[2], -20, 20))
             ll, _, _ = helper._laplace_loglik(
-                n, np.array([0.0, np.log(sigma), np.log(tau), np.log(kap)]), offset=base + 0.5 * sigma ** 2
+                n,
+                np.array([0.0, np.log(sigma), np.log(tau), np.log(kap)]),
+                offset=base + 0.5 * sigma**2,
             )
             return -ll if np.isfinite(ll) else 1e12
 
-        res = minimize(negll, [np.log(0.5), np.log(2.0), np.log(kappa)], method="Nelder-Mead",
-                       options={"maxiter": 400, "xatol": 1e-3, "fatol": 1e-2})
+        res = minimize(
+            negll,
+            [np.log(0.5), np.log(2.0), np.log(kappa)],
+            method="Nelder-Mead",
+            options={"maxiter": 400, "xatol": 1e-3, "fatol": 1e-2},
+        )
         sigma_fast = float(np.exp(np.clip(res.x[0], -8, 3)))
         tau_fast = float(np.exp(np.clip(res.x[1], -3, 6)))
         return {
@@ -196,8 +232,15 @@ class NBRegimeSwitch(CountModel):
             "_loglik_conditional": float(-res.fun),
         }
 
-    def simulate(self, n_bins: int, rng: np.random.Generator, alpha: float = 1.0,
-                 kappa_rule: str = "proportional", return_intensity: bool = False, **kwargs):
+    def simulate(
+        self,
+        n_bins: int,
+        rng: np.random.Generator,
+        alpha: float = 1.0,
+        kappa_rule: str = "proportional",
+        return_intensity: bool = False,
+        **kwargs,
+    ):
         p = self.params_
         P, pi = np.asarray(p["P"]), np.asarray(p["pi"])
         mu_states = np.asarray(p["mu_states"])
@@ -208,7 +251,7 @@ class NBRegimeSwitch(CountModel):
         eta = mu_states[states] + np.log(alpha)
         if self.fast_ar and "sigma_fast" in p:
             s, phi = float(p["sigma_fast"]), float(p["phi_fast"])
-            eta = eta + ar1_path(n_bins, s, phi, rng) - 0.5 * s ** 2
+            eta = eta + ar1_path(n_bins, s, phi, rng) - 0.5 * s**2
         lam = np.exp(np.clip(eta, -30, 30))
         counts = nb2_sample(lam, self.scaled_kappa(alpha, kappa_rule), rng).astype(float)
         return (counts, lam) if return_intensity else counts

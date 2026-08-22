@@ -31,6 +31,7 @@ them. It has its own README.
 |---|---|
 | `paths.py` | filesystem locations, resolved relative to the repository and env-overridable |
 | `state.py` | the resumable pipeline state as npy + csv + json, and model rebuilding; never pickle |
+| `artifacts.py` | atomic writers for pipeline and figure artifacts |
 | `ensemble.py` | the display-ensemble rules: which simulated run is representative, and how one is redrawn at another load |
 | `run_pipeline/` | the staged command-line driver; `python -m seren_countfirst.run_pipeline` lists the stages |
 | `experiments/` | standalone studies that are not part of any stage |

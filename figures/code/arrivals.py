@@ -33,14 +33,21 @@ def _collect() -> tuple:
     runs, _ = C.display_pool(model, cal, len(counts), N_CANDIDATES)
     pick = C.representative(runs, float(counts.mean()))
     # reported, never selected on
-    dist = np.array([sum(abs(np.log(max(base_marginals(r)[k], 1e-9) / tm[k]))
-                         for k in keys) for r in runs])
+    dist = np.array(
+        [sum(abs(np.log(max(base_marginals(r)[k], 1e-9) / tm[k])) for k in keys) for r in runs]
+    )
     order = np.argsort(dist)
-    report = pd.DataFrame({
-        "run": ["selected", "closest on stats", "median", "furthest"],
-        "stat_distance": [dist[pick], dist[order[0]],
-                          dist[order[len(order) // 2]], dist[order[-1]]],
-    })
+    report = pd.DataFrame(
+        {
+            "run": ["selected", "closest on stats", "median", "furthest"],
+            "stat_distance": [
+                dist[pick],
+                dist[order[0]],
+                dist[order[len(order) // 2]],
+                dist[order[-1]],
+            ],
+        }
+    )
     return counts, runs[pick], float(counts.mean()), dist[pick], report, pick
 
 
@@ -63,11 +70,28 @@ def series() -> None:
         ax.set_ylim(0, top)
         ax.set_xlim(0, span)
         C.style_axes(ax)
-        ax.text(-0.075, 1.04, tag, transform=ax.transAxes, color=C.INK,
-                fontsize=10, va="bottom", ha="left")
-        C.frame_legend(ax.legend([plt.Line2D([], [], color=color, linewidth=1.4)], [label],
-                                 loc="upper right", frameon=True, framealpha=1.0,
-                                 fontsize=8, handlelength=1.8, borderpad=0.45))
+        ax.text(
+            -0.075,
+            1.04,
+            tag,
+            transform=ax.transAxes,
+            color=C.INK,
+            fontsize=10,
+            va="bottom",
+            ha="left",
+        )
+        C.frame_legend(
+            ax.legend(
+                [plt.Line2D([], [], color=color, linewidth=1.4)],
+                [label],
+                loc="upper right",
+                frameon=True,
+                framealpha=1.0,
+                fontsize=8,
+                handlelength=1.8,
+                borderpad=0.45,
+            )
+        )
 
     ax2.set_xticks(np.arange(0, span + 1, 20))
     ax2.set_xlabel("Time (days)")
@@ -75,18 +99,27 @@ def series() -> None:
     fig.tight_layout(pad=0.4, h_pad=1.0)
     C.save(fig, "fig_series")
 
-    C.write_csv(pd.DataFrame({"day": np.arange(len(trace_win)) / C.BINS_PER_DAY,
-                              "trace_batches_per_h": trace_win * C.BINS_PER_H,
-                              "model_batches_per_h": syn_win * C.BINS_PER_H}),
-                "fig_series", index=False)
+    C.write_csv(
+        pd.DataFrame(
+            {
+                "day": np.arange(len(trace_win)) / C.BINS_PER_DAY,
+                "trace_batches_per_h": trace_win * C.BINS_PER_H,
+                "model_batches_per_h": syn_win * C.BINS_PER_H,
+            }
+        ),
+        "fig_series",
+        index=False,
+    )
     print(f"\nselection: run {pick} of {N_CANDIDATES}, stat distance {picked_d:.4f}")
     print(report.round(4).to_string(index=False))
     print(f"\ntrace overall mean {target * C.BINS_PER_H:.2f} batches/h")
     for name, w in (("trace", trace_win), ("model run", syn_win)):
         bm = base_marginals(w)
-        print(f"  {name:10} mean {bm['mean'] * C.BINS_PER_H:6.2f}  IDC {bm['IDC_15m']:7.2f}  "
-              f"zero {bm['zero_frac']:.3f}  acf_1h {bm['acf_1h_lag1']:.3f}  "
-              f"peak {bm['max_bin'] * C.BINS_PER_H:7.0f}")
+        print(
+            f"  {name:10} mean {bm['mean'] * C.BINS_PER_H:6.2f}  IDC {bm['IDC_15m']:7.2f}  "
+            f"zero {bm['zero_frac']:.3f}  acf_1h {bm['acf_1h_lag1']:.3f}  "
+            f"peak {bm['max_bin'] * C.BINS_PER_H:7.0f}"
+        )
 
 
 def _stack(rows: list, name: str) -> None:
@@ -105,8 +138,16 @@ def _stack(rows: list, name: str) -> None:
         ax.set_ylim(0, top)
         ax.set_xlim(0, span)
         ax.set_yticks([0, 1000, 2000])
-        ax.annotate(label, (0.008, 0.9), xycoords="axes fraction", ha="left", va="top",
-                    fontsize=8, color=color, zorder=4)
+        ax.annotate(
+            label,
+            (0.008, 0.9),
+            xycoords="axes fraction",
+            ha="left",
+            va="top",
+            fontsize=8,
+            color=color,
+            zorder=4,
+        )
         C.style_axes(ax, grid_axis="y", labelsize=7)
 
     axes[-1].set_xticks(np.arange(0, span + 1, 20))
@@ -115,14 +156,19 @@ def _stack(rows: list, name: str) -> None:
     fig.tight_layout(pad=0.4, h_pad=0.45)
     C.save(fig, name)
 
-    C.write_csv(pd.DataFrame({"day": t, **{label: data * C.BINS_PER_H
-                                           for label, data, _ in rows}}), name, index=False)
+    C.write_csv(
+        pd.DataFrame({"day": t, **{label: data * C.BINS_PER_H for label, data, _ in rows}}),
+        name,
+        index=False,
+    )
     print("\ntable view (the figure's twin):")
     for label, data, _ in rows:
         bm = base_marginals(data)
-        print(f"  {label:11s} mean {bm['mean'] * C.BINS_PER_H:6.2f}  IDC {bm['IDC_15m']:7.2f}  "
-              f"zero {bm['zero_frac']:.3f}  acf_1h {bm['acf_1h_lag1']:.3f}  "
-              f"peak {bm['max_bin'] * C.BINS_PER_H:7.0f}")
+        print(
+            f"  {label:11s} mean {bm['mean'] * C.BINS_PER_H:6.2f}  IDC {bm['IDC_15m']:7.2f}  "
+            f"zero {bm['zero_frac']:.3f}  acf_1h {bm['acf_1h_lag1']:.3f}  "
+            f"peak {bm['max_bin'] * C.BINS_PER_H:7.0f}"
+        )
 
 
 def _stacked_rows(best_baselines: bool) -> list:
@@ -164,8 +210,7 @@ def series_all_best() -> None:
 IDC_N_PATHS = 200
 # the seven scales are a chosen set, not a continuum, so they are spaced evenly.
 # Hours throughout: days would put three decimals on the short end.
-TICKS = {"15m": "0.25", "1h": "1", "6h": "6", "1d": "24",
-         "2d": "48", "4d": "96", "7d": "168"}
+TICKS = {"15m": "0.25", "1h": "1", "6h": "6", "1d": "24", "2d": "48", "4d": "96", "7d": "168"}
 
 
 def idc_scale() -> None:
@@ -176,18 +221,37 @@ def idc_scale() -> None:
     st = C.state()
     trace = idc_curve(st["counts"].values)
     paths = C.series_paths(st, IDC_N_PATHS)
-    curves = {label: pd.DataFrame([idc_curve(p) for p in runs]).median()
-              for label, runs in paths.items()}
+    curves = {
+        label: pd.DataFrame([idc_curve(p) for p in runs]).median() for label, runs in paths.items()
+    }
 
     C.house_style()
     fig, ax = plt.subplots(figsize=(3.5, 2.9))
     x = np.arange(len(SCALES), dtype=float)
 
-    ax.plot(x, trace.to_numpy(), color=C.INK, linewidth=1.5, linestyle="-",
-            marker="o", markersize=3.2, label="Trace", zorder=4)
+    ax.plot(
+        x,
+        trace.to_numpy(),
+        color=C.INK,
+        linewidth=1.5,
+        linestyle="-",
+        marker="o",
+        markersize=3.2,
+        label="Trace",
+        zorder=4,
+    )
     for _, label, color in C.SERIES:
-        ax.plot(x, curves[label].to_numpy(), color=color, linewidth=1.3,
-                linestyle=C.MODEL_DASH, marker="o", markersize=3.0, label=label, zorder=3)
+        ax.plot(
+            x,
+            curves[label].to_numpy(),
+            color=color,
+            linewidth=1.3,
+            linestyle=C.MODEL_DASH,
+            marker="o",
+            markersize=3.0,
+            label=label,
+            zorder=3,
+        )
 
     ax.set_xticks(x)
     ax.set_xticklabels([TICKS[s] for s in SCALES])
@@ -234,11 +298,28 @@ def acf() -> None:
     x = np.arange(len(LAGS), dtype=float)
 
     ax.axhline(0.0, color=C.AXIS, linewidth=0.7, zorder=1)
-    ax.plot(x, table["Trace"].to_numpy(), color=C.INK, linewidth=1.5,
-            marker="o", markersize=3.2, label="Trace", zorder=4)
+    ax.plot(
+        x,
+        table["Trace"].to_numpy(),
+        color=C.INK,
+        linewidth=1.5,
+        marker="o",
+        markersize=3.2,
+        label="Trace",
+        zorder=4,
+    )
     for _, label, color in C.SERIES:
-        ax.plot(x, table[label].to_numpy(), color=color, linewidth=1.3,
-                linestyle=C.MODEL_DASH, marker="o", markersize=3.0, label=label, zorder=3)
+        ax.plot(
+            x,
+            table[label].to_numpy(),
+            color=color,
+            linewidth=1.3,
+            linestyle=C.MODEL_DASH,
+            marker="o",
+            markersize=3.0,
+            label=label,
+            zorder=3,
+        )
 
     ax.set_xticks(x)
     ax.set_xticklabels([f"{lag * C.BIN_H:g}" for lag in LAGS])
@@ -271,6 +352,9 @@ VIEWS = {
 }
 
 if __name__ == "__main__":
-    C.run(VIEWS, "series",
-          "Arrival fidelity: the series, its dispersion across scales, and its memory.",
-          INPUTS)
+    C.run(
+        VIEWS,
+        "series",
+        "Arrival fidelity: the series, its dispersion across scales, and its memory.",
+        INPUTS,
+    )

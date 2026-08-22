@@ -18,9 +18,14 @@ from .latent import SizeLatent, within_batch_variance
 COMPONENT_ORDERS = (1, 2, 3, 4, 5)
 
 
-def component_scoreboard(jobs: pd.DataFrame, beta: float,
-                         orders: Sequence[int] = COMPONENT_ORDERS, n_init: int = 4,
-                         seed: int = 42, latent_variance: float = 0.0) -> pd.DataFrame:
+def component_scoreboard(
+    jobs: pd.DataFrame,
+    beta: float,
+    orders: Sequence[int] = COMPONENT_ORDERS,
+    n_init: int = 4,
+    seed: int = 42,
+    latent_variance: float = 0.0,
+) -> pd.DataFrame:
     """Score component counts, flagging those whose every component can be deflated.
 
     A component whose own within-batch spread is as wide as the component itself
@@ -32,23 +37,31 @@ def component_scoreboard(jobs: pd.DataFrame, beta: float,
     rows = []
     for k in orders:
         mix = LogNormalMixture.fit_log(residual, n_components=k, n_init=n_init, seed=seed)
-        slack = float(np.min(mix.sigma ** 2 - within_batch_variance(jobs, beta, mix)
-                             - latent_variance))
-        rows.append({"k": k, "AIC": mix.report.aic, "tightest_slack": slack,
-                     "deflatable": slack > 0.0})
+        slack = float(
+            np.min(mix.sigma**2 - within_batch_variance(jobs, beta, mix) - latent_variance)
+        )
+        rows.append(
+            {"k": k, "AIC": mix.report.aic, "tightest_slack": slack, "deflatable": slack > 0.0}
+        )
     return pd.DataFrame(rows)
 
 
-def best_component_order(jobs: pd.DataFrame, beta: float,
-                         orders: Sequence[int] = COMPONENT_ORDERS, n_init: int = 4,
-                         seed: int = 42, latent_variance: float = 0.0) -> int:
+def best_component_order(
+    jobs: pd.DataFrame,
+    beta: float,
+    orders: Sequence[int] = COMPONENT_ORDERS,
+    n_init: int = 4,
+    seed: int = 42,
+    latent_variance: float = 0.0,
+) -> int:
     """Return the best-AIC component count that can be deflated in every component."""
     board = component_scoreboard(jobs, beta, orders, n_init, seed, latent_variance)
     usable = board.loc[board["deflatable"]]
     if usable.empty:
         raise RuntimeError(
             f"no component count in {tuple(orders)} leaves every component wider "
-            f"than its own within-batch spread")
+            f"than its own within-batch spread"
+        )
     return int(usable.loc[usable["AIC"].idxmin(), "k"])
 
 
@@ -82,8 +95,9 @@ class ConditionalJobSize:
         self.m = np.asarray(self.m, dtype=float)
         self.s_batch = np.asarray(self.s_batch, dtype=float)
         self.s_job = np.asarray(self.s_job, dtype=float)
-        self.sigma_w = np.broadcast_to(np.asarray(self.sigma_w, dtype=float),
-                                       self.weights.shape).astype(float)
+        self.sigma_w = np.broadcast_to(
+            np.asarray(self.sigma_w, dtype=float), self.weights.shape
+        ).astype(float)
         self._frozen = False
 
     @property
@@ -97,9 +111,16 @@ class ConditionalJobSize:
         return 4 * self.n_components + (3 if self.latent is not None else 0)
 
     @classmethod
-    def fit(cls, jobs: pd.DataFrame, n_components: int | None = None, n_init: int = 10,
-            seed: int = 42, beta: float | None = None,
-            level: str = "mean_work", with_latent: bool = True) -> "ConditionalJobSize":
+    def fit(
+        cls,
+        jobs: pd.DataFrame,
+        n_components: int | None = None,
+        n_init: int = 10,
+        seed: int = 42,
+        beta: float | None = None,
+        level: str = "mean_work",
+        with_latent: bool = True,
+    ) -> "ConditionalJobSize":
         """Calibrate the levels in order, then place `mu`.
 
         No stage revisits an earlier one. Pass `beta` to pin the activity slope
@@ -121,34 +142,45 @@ class ConditionalJobSize:
 
         if beta is None:
             x = np.log(batches["activity"].to_numpy(dtype=float))
-            coef, *_ = np.linalg.lstsq(np.column_stack([np.ones(len(x)), x]),
-                                       batches["z_bar"].to_numpy(), rcond=None)
+            coef, *_ = np.linalg.lstsq(
+                np.column_stack([np.ones(len(x)), x]), batches["z_bar"].to_numpy(), rcond=None
+            )
             beta = float(coef[1])
 
         adjusted = z - beta * np.log(activity)
         latent = SizeLatent.calibrate(jobs, beta) if with_latent else None
         latent_var = latent.variance if latent is not None else 0.0
         if n_components is None:
-            n_components = best_component_order(jobs, beta, n_init=n_init, seed=seed,
-                                                latent_variance=latent_var)
-        mix = LogNormalMixture.fit_log(adjusted, n_components=n_components,
-                                       n_init=n_init, seed=seed)
+            n_components = best_component_order(
+                jobs, beta, n_init=n_init, seed=seed, latent_variance=latent_var
+            )
+        mix = LogNormalMixture.fit_log(
+            adjusted, n_components=n_components, n_init=n_init, seed=seed
+        )
         sigma_w2 = within_batch_variance(jobs, beta, mix)
         # three levels share one component variance: bin, batch, job
-        slack = mix.sigma ** 2 - sigma_w2 - latent_var
+        slack = mix.sigma**2 - sigma_w2 - latent_var
         if np.any(slack <= 0.0):
             c = int(np.argmin(slack))
             raise RuntimeError(
                 f"component {c} of variance {mix.sigma[c] ** 2:.4f} cannot hold a bin "
                 f"level of {latent_var:.4f} and a within-batch spread of "
-                f"{sigma_w2[c]:.4f}: no batch-level variance exists")
+                f"{sigma_w2[c]:.4f}: no batch-level variance exists"
+            )
 
         # the centring constraint moves the mixture's level into mu, placed next
         centre = float(np.sum(mix.weights * mix.mu))
-        model = cls(mu=0.0, beta=beta, sigma_w=np.sqrt(sigma_w2),
-                    weights=mix.weights, m=mix.mu - centre,
-                    s_batch=np.sqrt(slack), s_job=mix.sigma, latent=latent,
-                    report=mix.report)
+        model = cls(
+            mu=0.0,
+            beta=beta,
+            sigma_w=np.sqrt(sigma_w2),
+            weights=mix.weights,
+            m=mix.mu - centre,
+            s_batch=np.sqrt(slack),
+            s_job=mix.sigma,
+            latent=latent,
+            report=mix.report,
+        )
         if level == "mean_work":
             target = float(np.mean(jobs["job_size"].to_numpy(dtype=float)))
             model.mu = float(np.log(target) - np.log(model.mean_work(activity)))
@@ -158,7 +190,7 @@ class ConditionalJobSize:
 
     def _eps_scale(self) -> float:
         """Return E[exp(v + eps + eta)]: the levels recombine to the fitted variance."""
-        return float(np.sum(self.weights * np.exp(self.m + 0.5 * self.s_job ** 2)))
+        return float(np.sum(self.weights * np.exp(self.m + 0.5 * self.s_job**2)))
 
     def mean_work(self, activity: np.ndarray) -> float:
         """Return expected work per job over a population of bins.
@@ -166,36 +198,44 @@ class ConditionalJobSize:
         Exact under the model's independence of activity from both residuals.
         """
         act = np.asarray(activity, dtype=float)
-        return float(np.exp(self.mu) * np.mean(act ** self.beta) * self._eps_scale())
+        return float(np.exp(self.mu) * np.mean(act**self.beta) * self._eps_scale())
 
-    def _draw_batches(self, activity: np.ndarray, rng: np.random.Generator,
-                      alpha: float = 1.0, bin_level: np.ndarray | None = None
-                      ) -> tuple[np.ndarray, np.ndarray]:
+    def _draw_batches(
+        self,
+        activity: np.ndarray,
+        rng: np.random.Generator,
+        alpha: float = 1.0,
+        bin_level: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Draw each batch's log work level and the component that set it."""
         act = _stream_activity(activity, alpha)
         which = rng.choice(self.n_components, size=len(act), p=self.weights)
-        level = (self.mu + self.beta * np.log(act)
-                 + rng.normal(self.m[which], self.s_batch[which]))
+        level = self.mu + self.beta * np.log(act) + rng.normal(self.m[which], self.s_batch[which])
         if bin_level is not None:
             level = level + np.asarray(bin_level, dtype=float)
         return level, which
 
-    def draw_bin_level(self, bin_index: np.ndarray,
-                       rng: np.random.Generator) -> np.ndarray | None:
+    def draw_bin_level(self, bin_index: np.ndarray, rng: np.random.Generator) -> np.ndarray | None:
         """Return each batch's share of the slow size level, or None without one."""
         if self.latent is None:
             return None
         slots = np.asarray(bin_index, dtype=int)
         return self.latent.simulate(int(slots.max()) + 1, rng)[slots]
 
-    def batch_levels(self, activity: np.ndarray, rng: np.random.Generator,
-                     alpha: float = 1.0) -> np.ndarray:
+    def batch_levels(
+        self, activity: np.ndarray, rng: np.random.Generator, alpha: float = 1.0
+    ) -> np.ndarray:
         """Draw the log work level shared by the jobs of each batch."""
         return self._draw_batches(activity, rng, alpha)[0]
 
-    def rvs(self, activity: np.ndarray, cardinality: np.ndarray,
-            rng: np.random.Generator, alpha: float = 1.0,
-            bin_index: np.ndarray | None = None) -> np.ndarray:
+    def rvs(
+        self,
+        activity: np.ndarray,
+        cardinality: np.ndarray,
+        rng: np.random.Generator,
+        alpha: float = 1.0,
+        bin_index: np.ndarray | None = None,
+    ) -> np.ndarray:
         """Draw one work unit per job, batch by batch, in the order given.
 
         `alpha` superposes that many unit-load streams, so a batch reads its own
@@ -208,8 +248,9 @@ class ConditionalJobSize:
         level, which = self._draw_batches(activity, rng, alpha, bin_level)
         card = np.asarray(cardinality, dtype=int)
         base = np.repeat(level, card)
-        return np.exp(base + rng.normal(0.0, 1.0, size=len(base))
-                      * np.repeat(self.sigma_w[which], card))
+        return np.exp(
+            base + rng.normal(0.0, 1.0, size=len(base)) * np.repeat(self.sigma_w[which], card)
+        )
 
     def freeze(self) -> "ConditionalJobSize":
         self._frozen = True
@@ -232,16 +273,17 @@ class ConditionalJobSize:
 
     @classmethod
     def from_dict(cls, blob: dict) -> "ConditionalJobSize":
-        return cls(mu=float(blob["mu"]), beta=float(blob["beta"]),
-                   sigma_w=np.asarray(blob["sigma_w"], dtype=float),
-                   weights=np.asarray(blob["weights"], dtype=float),
-                   m=np.asarray(blob["m"], dtype=float),
-                   s_batch=np.asarray(blob["s_batch"], dtype=float),
-                   s_job=np.asarray(blob["s_job"], dtype=float),
-                   latent=(SizeLatent.from_dict(blob["latent"])
-                           if blob.get("latent") else None))
+        return cls(
+            mu=float(blob["mu"]),
+            beta=float(blob["beta"]),
+            sigma_w=np.asarray(blob["sigma_w"], dtype=float),
+            weights=np.asarray(blob["weights"], dtype=float),
+            m=np.asarray(blob["m"], dtype=float),
+            s_batch=np.asarray(blob["s_batch"], dtype=float),
+            s_job=np.asarray(blob["s_job"], dtype=float),
+            latent=(SizeLatent.from_dict(blob["latent"]) if blob.get("latent") else None),
+        )
 
 
 def read_conditional_jobsize(path: str | Path) -> ConditionalJobSize:
-    return ConditionalJobSize.from_dict(
-        json.loads(Path(path).read_text(encoding="utf-8")))
+    return ConditionalJobSize.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))

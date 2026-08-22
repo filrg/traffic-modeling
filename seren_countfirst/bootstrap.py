@@ -9,17 +9,19 @@ from .data import SCALES
 from .metrics import aggregate, idc
 
 
-def moving_block_bootstrap(x: np.ndarray, block: int, rng: np.random.Generator,
-                           n_out: int | None = None) -> np.ndarray:
+def moving_block_bootstrap(
+    x: np.ndarray, block: int, rng: np.random.Generator, n_out: int | None = None
+) -> np.ndarray:
     x = np.asarray(x, dtype=float)
     n_out = n_out or len(x)
     n_blocks = int(np.ceil(n_out / block))
     starts = rng.integers(0, max(len(x) - block, 1), size=n_blocks)
-    return np.concatenate([x[s:s + block] for s in starts])[:n_out]
+    return np.concatenate([x[s : s + block] for s in starts])[:n_out]
 
 
-def stationary_bootstrap(x: np.ndarray, mean_block: int, rng: np.random.Generator,
-                         n_out: int | None = None) -> np.ndarray:
+def stationary_bootstrap(
+    x: np.ndarray, mean_block: int, rng: np.random.Generator, n_out: int | None = None
+) -> np.ndarray:
     """Resample with geometric block lengths, so the resample is stationary."""
     x = np.asarray(x, dtype=float)
     n_out = n_out or len(x)
@@ -32,8 +34,9 @@ def stationary_bootstrap(x: np.ndarray, mean_block: int, rng: np.random.Generato
     return out
 
 
-def phase_matched_bootstrap(x: np.ndarray, period: int, rng: np.random.Generator,
-                            n_out: int | None = None) -> np.ndarray:
+def phase_matched_bootstrap(
+    x: np.ndarray, period: int, rng: np.random.Generator, n_out: int | None = None
+) -> np.ndarray:
     """Resample whole periods, preserving calendar phase but not multi-day episodes."""
     x = np.asarray(x, dtype=float)
     n_out = n_out or len(x)
@@ -41,11 +44,12 @@ def phase_matched_bootstrap(x: np.ndarray, period: int, rng: np.random.Generator
     if n_periods < 2:
         return moving_block_bootstrap(x, period, rng, n_out)
     picks = rng.integers(0, n_periods, size=int(np.ceil(n_out / period)))
-    return np.concatenate([x[p * period:(p + 1) * period] for p in picks])[:n_out]
+    return np.concatenate([x[p * period : (p + 1) * period] for p in picks])[:n_out]
 
 
-def segment_bootstrap(x: np.ndarray, n_segments: int, block: int, rng: np.random.Generator,
-                      n_out: int | None = None) -> np.ndarray:
+def segment_bootstrap(
+    x: np.ndarray, n_segments: int, block: int, rng: np.random.Generator, n_out: int | None = None
+) -> np.ndarray:
     """Bootstrap within one contiguous activity segment, chosen at random."""
     x = np.asarray(x, dtype=float)
     segs = np.array_split(x, n_segments)
@@ -136,13 +140,16 @@ def scale_matched_idc_envelope(
 
 
 def bootstrap_baseline_table(
-    x: np.ndarray, metric_fn: Callable[[np.ndarray], pd.Series], methods: Sequence[str] | None = None,
-    n_rep: int = 40, seed: int = 0
+    x: np.ndarray,
+    metric_fn: Callable[[np.ndarray], pd.Series],
+    methods: Sequence[str] | None = None,
+    n_rep: int = 40,
+    seed: int = 0,
 ) -> pd.DataFrame:
     """Score every bootstrap method against the trace with the shared metric set."""
     trace = metric_fn(np.asarray(x, dtype=float))
     rows: list[dict] = []
-    for method in (methods or list(BOOTSTRAPS)):
+    for method in methods or list(BOOTSTRAPS):
         env = bootstrap_metric_envelope(x, metric_fn, method, n_rep=n_rep, seed=seed)
         for metric in trace.index:
             if metric not in env.index:
@@ -155,7 +162,9 @@ def bootstrap_baseline_table(
                     "boot_median": float(env.loc[metric, "median"]),
                     "boot_q025": float(env.loc[metric, "q025"]),
                     "boot_q975": float(env.loc[metric, "q975"]),
-                    "inside_envelope": bool(env.loc[metric, "q025"] <= trace[metric] <= env.loc[metric, "q975"]),
+                    "inside_envelope": bool(
+                        env.loc[metric, "q025"] <= trace[metric] <= env.loc[metric, "q975"]
+                    ),
                 }
             )
     return pd.DataFrame(rows)

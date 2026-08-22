@@ -11,8 +11,14 @@ from .reconstruct import collision_risk
 DEFAULT_ALPHAS: tuple = (0.5, 1.0, 2.0, 4.0, 8.0)
 
 
-def simulate_at_load(model, n_bins: int, alpha: float, rng: np.random.Generator,
-                     kappa_rule: str = "proportional", **kwargs) -> np.ndarray:
+def simulate_at_load(
+    model,
+    n_bins: int,
+    alpha: float,
+    rng: np.random.Generator,
+    kappa_rule: str = "proportional",
+    **kwargs,
+) -> np.ndarray:
     """Draw one path at load alpha; the model's frozen structure is not re-tuned."""
     return model.simulate(n_bins, rng, alpha=alpha, kappa_rule=kappa_rule, **kwargs)
 
@@ -47,7 +53,9 @@ def scaling_report(
     rows: list[dict] = []
     for rule in kappa_rules:
         rng = np.random.default_rng(seed)
-        ref_paths = [simulate_at_load(model, n_bins, 1.0, rng, rule, **sim_kwargs) for _ in range(n_paths)]
+        ref_paths = [
+            simulate_at_load(model, n_bins, 1.0, rng, rule, **sim_kwargs) for _ in range(n_paths)
+        ]
         ref_total = float(np.mean([p.sum() for p in ref_paths]))
         ref_idc = idc_curve(np.concatenate(ref_paths[:1]))
         ref_acf = acf(ref_paths[0], [1, 4, 96])
@@ -57,7 +65,10 @@ def scaling_report(
 
         for alpha in alphas:
             rng = np.random.default_rng(seed + 7919)
-            paths = [simulate_at_load(model, n_bins, alpha, rng, rule, **sim_kwargs) for _ in range(n_paths)]
+            paths = [
+                simulate_at_load(model, n_bins, alpha, rng, rule, **sim_kwargs)
+                for _ in range(n_paths)
+            ]
             totals = np.array([p.sum() for p in paths], dtype=float)
             mean_total = float(totals.mean())
             expected = alpha * float(model.params_["mean"]) * n_bins
@@ -78,7 +89,9 @@ def scaling_report(
                     # gate 8 grades the Monte Carlo error, not the spread
                     "se_total": float(totals.std(ddof=1) / np.sqrt(len(totals))),
                     "rate_error_vs_theory": float(abs(mean_total / expected - 1.0)),
-                    "rate_error_vs_alpha1": float(abs(mean_total / max(alpha * ref_total, 1e-12) - 1.0)),
+                    "rate_error_vs_alpha1": float(
+                        abs(mean_total / max(alpha * ref_total, 1e-12) - 1.0)
+                    ),
                     "IDC_15m": float(idc_a["15m"]),
                     "IDC_1d": float(idc_a["1d"]),
                     "IDC_15m_drift_log": float(np.log(idc_a["15m"] / ref_idc["15m"])),
@@ -99,15 +112,24 @@ def scaling_report(
     return pd.DataFrame(rows)
 
 
-def superposition_comparison(model, n_bins: int, k_values: Sequence[int] = (2, 4, 8),
-                             n_paths: int = 10, seed: int = 0, **sim_kwargs) -> pd.DataFrame:
+def superposition_comparison(
+    model,
+    n_bins: int,
+    k_values: Sequence[int] = (2, 4, 8),
+    n_paths: int = 10,
+    seed: int = 0,
+    **sim_kwargs,
+) -> pd.DataFrame:
     """Contrast superposition with intensity multiplication at matched load."""
     rows = []
     for k in k_values:
         rng = np.random.default_rng(seed)
         sup = [superposition(model, n_bins, k, rng, **sim_kwargs) for _ in range(n_paths)]
         rng = np.random.default_rng(seed)
-        mult = [simulate_at_load(model, n_bins, float(k), rng, "constant", **sim_kwargs) for _ in range(n_paths)]
+        mult = [
+            simulate_at_load(model, n_bins, float(k), rng, "constant", **sim_kwargs)
+            for _ in range(n_paths)
+        ]
         rows.append(
             {
                 "k": k,
@@ -122,8 +144,14 @@ def superposition_comparison(model, n_bins: int, k_values: Sequence[int] = (2, 4
     return pd.DataFrame(rows)
 
 
-def calibrate_intercept(model, n_bins: int, target_rate_per_bin: float, rng: np.random.Generator,
-                        n_paths: int = 20, **sim_kwargs) -> float:
+def calibrate_intercept(
+    model,
+    n_bins: int,
+    target_rate_per_bin: float,
+    rng: np.random.Generator,
+    n_paths: int = 20,
+    **sim_kwargs,
+) -> float:
     """Return the global multiplicative correction on alpha.
 
     Applied to the intercept, never per synthetic path, and only after the

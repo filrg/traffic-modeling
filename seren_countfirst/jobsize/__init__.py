@@ -1,19 +1,41 @@
 from __future__ import annotations
 
 from .work import (
-    F_MAX, attach_activity, batch_frame, bin_grid_index, jobsize_table,
-    roundtrip_error_s, step_time_s, work_units)
+    F_MAX,
+    attach_activity,
+    batch_frame,
+    bin_grid_index,
+    jobsize_table,
+    roundtrip_error_s,
+    step_time_s,
+    work_units,
+)
 from .laws import (
-    EmpiricalJobSize, LogNormalMixture, SCIPY_CANDIDATES, ScipyJobSize, fit_jobsize,
-    read_jobsize_model, write_jobsize_model)
+    EmpiricalJobSize,
+    LogNormalMixture,
+    SCIPY_CANDIDATES,
+    ScipyJobSize,
+    fit_jobsize,
+    read_jobsize_model,
+    write_jobsize_model,
+)
 from .latent import SizeLatent, within_batch_variance
 from .composition import CompositionJobSize
 from .conditional import (
-    COMPONENT_ORDERS, ConditionalJobSize, best_component_order, component_scoreboard,
-    read_conditional_jobsize)
+    COMPONENT_ORDERS,
+    ConditionalJobSize,
+    best_component_order,
+    component_scoreboard,
+    read_conditional_jobsize,
+)
 from .two_part import TAIL_QUANTILE, TwoPartJobSize, read_two_part_jobsize
 from .folds import (
-    assign_work, fold_report, offered_work_stats, rolling_origin_windows, score_window)
+    assign_work,
+    fold_report,
+    offered_work_stats,
+    rolling_origin_windows,
+    score_window,
+)
 
 __all__ = [
     "COMPONENT_ORDERS",

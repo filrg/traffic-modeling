@@ -4,6 +4,7 @@ import json
 
 import numpy as np
 
+from ...artifacts import write_json
 from ...provenance import environment
 from ...paths import RESULTS
 from ..config import SEED
@@ -19,13 +20,26 @@ def stage_export() -> None:
     card = {
         "model": model.name,
         "semantics": "single SFT workload population; alpha = intensity scaling of the active level; "
-                     "gate_shift = participation scaling (different semantics, never mixed with alpha); "
-                     "superposition = independent populations",
-        "provenance": {"trace_sha256": state["trace_sha256"], "n_bins": state["n_bins"],
-                       "resolution": "15min", "seed": SEED, **environment()},
-        "params": {k: (np.asarray(v).tolist() if isinstance(v, np.ndarray) else float(v))
-                   for k, v in model.params_.items()},
-        "fit": (model.report.to_dict() if model.report else {"estimator": "moment-calibrated, not a likelihood fit; the gated MLE route was tried with a real budget and refuted -- it converges, three restarts agree, and it drives tau_slow shorter while inflating kappa to ~9e3"}),
+        "gate_shift = participation scaling (different semantics, never mixed with alpha); "
+        "superposition = independent populations",
+        "provenance": {
+            "trace_sha256": state["trace_sha256"],
+            "n_bins": state["n_bins"],
+            "resolution": "15min",
+            "seed": SEED,
+            **environment(),
+        },
+        "params": {
+            k: (np.asarray(v).tolist() if isinstance(v, np.ndarray) else float(v))
+            for k, v in model.params_.items()
+        },
+        "fit": (
+            model.report.to_dict()
+            if model.report
+            else {
+                "estimator": "moment-calibrated, not a likelihood fit; the gated MLE route was tried with a real budget and refuted -- it converges, three restarts agree, and it drives tau_slow shorter while inflating kappa to ~9e3"
+            }
+        ),
         "trace_marginals": state["trace_marginals"],
         "trace_idc": state["trace_idc"],
         "handle": "GLI-NB (gated latent-intensity negative binomial)",
@@ -66,6 +80,6 @@ def stage_export() -> None:
             "eight-gate certification, so it is deliberately not added",
         ],
     }
-    (RESULTS / "model_card.json").write_text(json.dumps(card, indent=2))
+    write_json(card, RESULTS / "model_card.json")
     print(json.dumps({k: card[k] for k in ("model", "params", "open_decisions")}, indent=2)[:1200])
     print("export done -> results/model_card.json")

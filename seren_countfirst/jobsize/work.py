@@ -14,9 +14,13 @@ A100_GAMMA_T = 0.0014
 F_MAX = 1.0
 
 
-def step_time_s(n_gpus: np.ndarray | float, f_ghz: float = F_MAX,
-                alpha_t: float = A100_ALPHA_T, beta_t: float = A100_BETA_T,
-                gamma_t: float = A100_GAMMA_T) -> np.ndarray:
+def step_time_s(
+    n_gpus: np.ndarray | float,
+    f_ghz: float = F_MAX,
+    alpha_t: float = A100_ALPHA_T,
+    beta_t: float = A100_BETA_T,
+    gamma_t: float = A100_GAMMA_T,
+) -> np.ndarray:
     """Return seconds per work unit on `n_gpus` at `f_ghz`."""
     n = np.maximum(1.0, np.asarray(n_gpus, dtype=float))
     f = max(float(f_ghz), 1e-9)
@@ -25,8 +29,7 @@ def step_time_s(n_gpus: np.ndarray | float, f_ghz: float = F_MAX,
     return np.where(n == 1.0, single, multi)
 
 
-def work_units(duration_s: np.ndarray, n_gpus: np.ndarray,
-               f_ghz: float = F_MAX) -> np.ndarray:
+def work_units(duration_s: np.ndarray, n_gpus: np.ndarray, f_ghz: float = F_MAX) -> np.ndarray:
     """Invert a wall-clock duration into work units at the trace's operating point.
 
     Exact inverse of `step_time_s`; `jobsize_table` reports the round trip.
@@ -41,8 +44,9 @@ def jobsize_table(view: pd.DataFrame, f_ghz: float = F_MAX) -> pd.DataFrame:
     stays meaningful.
     """
     usable = view.loc[(view["duration"] > 0) & (view["gpu_num"] > 0)].copy()
-    usable["job_size"] = work_units(usable["duration"].to_numpy(),
-                                    usable["gpu_num"].to_numpy(), f_ghz)
+    usable["job_size"] = work_units(
+        usable["duration"].to_numpy(), usable["gpu_num"].to_numpy(), f_ghz
+    )
     return usable.reset_index(drop=True)
 
 
@@ -52,15 +56,19 @@ def roundtrip_error_s(table: pd.DataFrame, f_ghz: float = F_MAX) -> float:
     return float(np.max(np.abs(back - table["duration"].to_numpy())))
 
 
-def attach_activity(table: pd.DataFrame, arrivals: pd.DataFrame,
-                    freq: str = BASE_FREQ) -> pd.DataFrame:
+def attach_activity(
+    table: pd.DataFrame, arrivals: pd.DataFrame, freq: str = BASE_FREQ
+) -> pd.DataFrame:
     """Add each job's bin and that bin's batch count, dropping non-positive sizes.
 
     Activity counts batches over every submission, not only the completed ones:
     it is the quantity the count model generates.
     """
-    activity = (arrivals.assign(_bin=arrivals["submit_time_dt"].dt.floor(freq))
-                .groupby("_bin")["submit_time_dt"].nunique())
+    activity = (
+        arrivals.assign(_bin=arrivals["submit_time_dt"].dt.floor(freq))
+        .groupby("_bin")["submit_time_dt"]
+        .nunique()
+    )
     jobs = table.loc[table["job_size"] > 0.0].copy()
     jobs["bin"] = jobs["submit_time_dt"].dt.floor(freq)
     jobs["activity"] = jobs["bin"].map(activity).to_numpy(dtype=float)
@@ -72,9 +80,11 @@ def attach_activity(table: pd.DataFrame, arrivals: pd.DataFrame,
 def batch_frame(jobs: pd.DataFrame) -> pd.DataFrame:
     """Collapse jobs sharing a submission timestamp into one batch row."""
     grouped = jobs.assign(z=np.log(jobs["job_size"].to_numpy(dtype=float))).groupby(
-        ["bin", "submit_time_dt"], sort=True)
-    return grouped.agg(z_bar=("z", "mean"), cardinality=("z", "size"),
-                       activity=("activity", "first")).reset_index()
+        ["bin", "submit_time_dt"], sort=True
+    )
+    return grouped.agg(
+        z_bar=("z", "mean"), cardinality=("z", "size"), activity=("activity", "first")
+    ).reset_index()
 
 
 def bin_grid_index(bins, freq: str = BASE_FREQ) -> np.ndarray:

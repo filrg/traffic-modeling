@@ -20,6 +20,7 @@ TAIL_QUANTILE = 0.99
 
 def _poisson_loglinear(counts: np.ndarray, x: np.ndarray) -> tuple[float, float]:
     """Fit `log lambda = a + b x` by Poisson maximum likelihood."""
+
     def nll(p: np.ndarray) -> float:
         eta = p[0] + p[1] * x
         return float(np.sum(np.exp(eta) - counts * eta))
@@ -46,7 +47,7 @@ class TwoPartJobSize:
     """
 
     cut: float
-    bulk: ConditionalJobSize
+    bulk: CompositionJobSize | ConditionalJobSize
     tail_shape: float
     tail_scale: float
     rate_a: float
@@ -66,11 +67,18 @@ class TwoPartJobSize:
         return self.bulk.n_params + 4
 
     @classmethod
-    def fit(cls, jobs: pd.DataFrame, quantile: float = TAIL_QUANTILE,
-            n_components: int | None = None, n_init: int = 10, seed: int = 42,
-            tail_kind: str = "empirical", beta: float | None = None,
-            with_latent: bool = True,
-            bulk_kind: str = "composition") -> "TwoPartJobSize":
+    def fit(
+        cls,
+        jobs: pd.DataFrame,
+        quantile: float = TAIL_QUANTILE,
+        n_components: int | None = None,
+        n_init: int = 10,
+        seed: int = 42,
+        tail_kind: str = "empirical",
+        beta: float | None = None,
+        with_latent: bool = True,
+        bulk_kind: str = "composition",
+    ) -> "TwoPartJobSize":
         """Split the sizes at `quantile`, then fit each part against its own data.
 
         The generalized Pareto is fitted either way, but the default draws from the
@@ -85,23 +93,39 @@ class TwoPartJobSize:
         below = jobs.loc[~above].reset_index(drop=True)
         if bulk_kind == "composition":
             # no deflation constraint on a per-job component, so k is not narrowed
-            bulk = CompositionJobSize.fit(below, n_components=n_components or 3,
-                                          n_init=n_init, seed=seed)
+            bulk = CompositionJobSize.fit(
+                below, n_components=n_components or 3, n_init=n_init, seed=seed
+            )
         elif bulk_kind == "conditional":
-            bulk = ConditionalJobSize.fit(below, n_components=n_components,
-                                          n_init=n_init, seed=seed, beta=beta,
-                                          with_latent=with_latent)
+            bulk = ConditionalJobSize.fit(
+                below,
+                n_components=n_components,
+                n_init=n_init,
+                seed=seed,
+                beta=beta,
+                with_latent=with_latent,
+            )
         else:
             raise ValueError("bulk_kind must be 'conditional' or 'composition'")
         shape, _, scale = stats.genpareto.fit(sizes[above] - cut, floc=0.0)
-        per_bin = jobs.assign(_above=above).groupby("bin").agg(
-            k=("_above", "sum"), activity=("activity", "first"))
+        per_bin = (
+            jobs.assign(_above=above)
+            .groupby("bin")
+            .agg(k=("_above", "sum"), activity=("activity", "first"))
+        )
         rate_a, rate_b = _poisson_loglinear(
-            per_bin["k"].to_numpy(dtype=float),
-            np.log(per_bin["activity"].to_numpy(dtype=float)))
-        model = cls(cut=cut, bulk=bulk, tail_shape=float(shape), tail_scale=float(scale),
-                    rate_a=rate_a, rate_b=rate_b, tail_kind=tail_kind,
-                    tail_pool=sizes[above].copy())
+            per_bin["k"].to_numpy(dtype=float), np.log(per_bin["activity"].to_numpy(dtype=float))
+        )
+        model = cls(
+            cut=cut,
+            bulk=bulk,
+            tail_shape=float(shape),
+            tail_scale=float(scale),
+            rate_a=rate_a,
+            rate_b=rate_b,
+            tail_kind=tail_kind,
+            tail_pool=sizes[above].copy(),
+        )
         model._solve_level(jobs, float(sizes.mean()))
         return model
 
@@ -113,15 +137,18 @@ class TwoPartJobSize:
         weighted by the observed exceedances, so a fitted tail law leaves the level
         alone.
         """
-        placed_all = float(self.tail_rate(
-            jobs.groupby("bin")["activity"].first().to_numpy(dtype=float)).sum())
+        placed_all = float(
+            self.tail_rate(jobs.groupby("bin")["activity"].first().to_numpy(dtype=float)).sum()
+        )
         tail_share = placed_all / len(jobs)
         pool_mean = float(self.tail_pool.mean())
         if isinstance(self.bulk, CompositionJobSize):
             # the composition bulk carries its own level and its own quadrature
-            self.bulk.solve_level(jobs["activity"].to_numpy(dtype=float),
-                                  (target - tail_share * pool_mean) / (1.0 - tail_share),
-                                  float(np.log(self.cut)))
+            self.bulk.solve_level(
+                jobs["activity"].to_numpy(dtype=float),
+                (target - tail_share * pool_mean) / (1.0 - tail_share),
+                float(np.log(self.cut)),
+            )
             return
         batches = batch_frame(jobs)
         log_act = np.log(batches["activity"].to_numpy(dtype=float))
@@ -136,17 +163,24 @@ class TwoPartJobSize:
         # so it moves how much of each component the cut removes
         v_sd = np.sqrt(self.bulk.latent.variance) if self.bulk.latent else 0.0
         v_nodes, v_gh = (nodes, gh) if v_sd > 0 else (np.zeros(1), np.ones(1))
-        offset = (self.bulk.beta * uniq[:, None, None, None]
-                  + self.bulk.m[None, :, None, None]
-                  + self.bulk.s_batch[None, :, None, None] * nodes[None, None, :, None]
-                  + v_sd * v_nodes[None, None, None, :])
-        mass = (share[:, None, None, None] * self.bulk.weights[None, :, None, None]
-                * gh[None, None, :, None] * v_gh[None, None, None, :])
+        offset = (
+            self.bulk.beta * uniq[:, None, None, None]
+            + self.bulk.m[None, :, None, None]
+            + self.bulk.s_batch[None, :, None, None] * nodes[None, None, :, None]
+            + v_sd * v_nodes[None, None, None, :]
+        )
+        mass = (
+            share[:, None, None, None]
+            * self.bulk.weights[None, :, None, None]
+            * gh[None, None, :, None]
+            * v_gh[None, None, None, :]
+        )
         # the truncation is per component, because so is the within-batch spread
         sigma = self.bulk.sigma_w[None, :, None, None]
 
-        placed = float(self.tail_rate(
-            jobs.groupby("bin")["activity"].first().to_numpy(dtype=float)).sum())
+        placed = float(
+            self.tail_rate(jobs.groupby("bin")["activity"].first().to_numpy(dtype=float)).sum()
+        )
         share_tail = placed / len(jobs)
         tail_mean = float(self.tail_pool.mean())
         log_cut = float(np.log(self.cut))
@@ -162,7 +196,7 @@ class TwoPartJobSize:
             hi += 1.0
         self.bulk.mu = float(optimize.brentq(gap, lo, hi, xtol=1e-10))
 
-    def tail_rate(self, activity: np.ndarray) -> np.ndarray:
+    def tail_rate(self, activity: np.ndarray | float) -> np.ndarray:
         """Return the expected number of large jobs in a bin of that activity."""
         act = np.maximum(np.asarray(activity, dtype=float), 1.0)
         return np.exp(self.rate_a + self.rate_b * np.log(act))
@@ -170,11 +204,18 @@ class TwoPartJobSize:
     def _draw_tail(self, n: int, rng: np.random.Generator) -> np.ndarray:
         if self.tail_kind == "empirical":
             return rng.choice(self.tail_pool, size=n)
-        return self.cut + stats.genpareto.rvs(self.tail_shape, scale=self.tail_scale,
-                                              size=n, random_state=rng)
+        return self.cut + stats.genpareto.rvs(
+            self.tail_shape, scale=self.tail_scale, size=n, random_state=rng
+        )
 
-    def rvs(self, activity: np.ndarray, cardinality: np.ndarray, bin_index: np.ndarray,
-            rng: np.random.Generator, alpha: float = 1.0) -> np.ndarray:
+    def rvs(
+        self,
+        activity: np.ndarray,
+        cardinality: np.ndarray,
+        bin_index: np.ndarray,
+        rng: np.random.Generator,
+        alpha: float = 1.0,
+    ) -> np.ndarray:
         """Draw one work unit per job; `bin_index` groups the batches into bins.
 
         `alpha` superposes that many unit-load streams: each reads its own share
@@ -187,8 +228,9 @@ class TwoPartJobSize:
         if isinstance(self.bulk, CompositionJobSize):
             out = self.bulk.rvs(activity, card, rng, alpha, float(np.log(self.cut)))
         else:
-            raw, which = self.bulk._draw_batches(activity, rng, alpha,
-                                                 self.bulk.draw_bin_level(bins, rng))
+            raw, which = self.bulk._draw_batches(
+                activity, rng, alpha, self.bulk.draw_bin_level(bins, rng)
+            )
             level = np.repeat(raw, card)
             sigma = np.repeat(self.bulk.sigma_w[which], card)
             out = np.exp(level + _normal_below(np.log(self.cut) - level, sigma, rng))
@@ -198,8 +240,10 @@ class TwoPartJobSize:
         bin_activity = np.zeros(n_bins)
         bin_activity[bins] = _stream_activity(activity, alpha)
         # binomial, not Poisson: a bin cannot promote more jobs than it holds
-        wanted = rng.binomial(counts, np.minimum(
-            float(alpha) * self.tail_rate(bin_activity) / np.maximum(counts, 1), 1.0))
+        wanted = rng.binomial(
+            counts,
+            np.minimum(float(alpha) * self.tail_rate(bin_activity) / np.maximum(counts, 1), 1.0),
+        )
         order = np.argsort(bin_of_job, kind="stable")
         starts = np.searchsorted(bin_of_job[order], np.arange(n_bins))
         for b in np.nonzero(wanted)[0]:
@@ -232,13 +276,19 @@ class TwoPartJobSize:
 
     @classmethod
     def from_dict(cls, blob: dict, tail_pool: np.ndarray | None = None) -> "TwoPartJobSize":
-        loader = (CompositionJobSize if blob.get("bulk_kind") == "composition"
-                  else ConditionalJobSize)
-        return cls(cut=float(blob["cut"]), bulk=loader.from_dict(blob["bulk"]),
-                   tail_shape=float(blob["tail_shape"]),
-                   tail_scale=float(blob["tail_scale"]),
-                   rate_a=float(blob["rate_a"]), rate_b=float(blob["rate_b"]),
-                   tail_kind=str(blob["tail_kind"]), tail_pool=tail_pool)
+        loader = (
+            CompositionJobSize if blob.get("bulk_kind") == "composition" else ConditionalJobSize
+        )
+        return cls(
+            cut=float(blob["cut"]),
+            bulk=loader.from_dict(blob["bulk"]),
+            tail_shape=float(blob["tail_shape"]),
+            tail_scale=float(blob["tail_scale"]),
+            rate_a=float(blob["rate_a"]),
+            rate_b=float(blob["rate_b"]),
+            tail_kind=str(blob["tail_kind"]),
+            tail_pool=tail_pool,
+        )
 
 
 def read_two_part_jobsize(path: str | Path, pool_path: str | Path) -> TwoPartJobSize:

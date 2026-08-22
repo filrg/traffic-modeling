@@ -52,13 +52,13 @@ class CompositionJobSize:
         return w / w.sum(axis=1, keepdims=True)
 
     @classmethod
-    def fit(cls, jobs: pd.DataFrame, n_components: int = 3, n_init: int = 10,
-            seed: int = 42) -> "CompositionJobSize":
+    def fit(
+        cls, jobs: pd.DataFrame, n_components: int = 3, n_init: int = 10, seed: int = 42
+    ) -> "CompositionJobSize":
         """Fit the mixture, then how its weights and its batches follow activity."""
         z = np.log(jobs["job_size"].to_numpy(dtype=float))
         activity = np.log(np.maximum(jobs["activity"].to_numpy(dtype=float), 1.0))
-        mix = LogNormalMixture.fit_log(z, n_components=n_components, n_init=n_init,
-                                       seed=seed)
+        mix = LogNormalMixture.fit_log(z, n_components=n_components, n_init=n_init, seed=seed)
         comp = mix._component_logpdf(z, mix.weights, mix.mu, mix.sigma)
         resp = np.exp(comp - logsumexp(comp, axis=1)[:, None])
 
@@ -80,8 +80,7 @@ class CompositionJobSize:
         # once every job is assigned the component it most likely came from
         label = np.argmax(resp, axis=1)
         frame = jobs.assign(_c=label, _z=z)
-        modal = frame.groupby(["bin", "submit_time_dt"])["_c"].transform(
-            lambda s: s.mode().iat[0])
+        modal = frame.groupby(["bin", "submit_time_dt"])["_c"].transform(lambda s: s.mode().iat[0])
         escape = float(np.mean(label != modal.to_numpy()))
 
         # the spread left inside a batch once its component is accounted for
@@ -92,26 +91,40 @@ class CompositionJobSize:
             sub = frame.loc[take]
             groups = sub.groupby(["bin", "submit_time_dt"])["_z"]
             dof = len(sub) - groups.ngroups
-            s_job[c] = (np.sqrt(((sub["_z"] - groups.transform("mean")) ** 2).sum() / dof)
-                        if dof > 30 else mix.sigma[c] * 0.5)
+            s_job[c] = (
+                np.sqrt(((sub["_z"] - groups.transform("mean")) ** 2).sum() / dof)
+                if dof > 30
+                else mix.sigma[c] * 0.5
+            )
         s_job = np.minimum(s_job, mix.sigma * 0.999)
-        model = cls(m=mix.mu, s_job=s_job,
-                    s_batch=np.sqrt(np.maximum(mix.sigma ** 2 - s_job ** 2, 1e-9)),
-                    logit_a=coef[:, 0], logit_b=coef[:, 1], escape=escape)
-        model.solve_level(jobs["activity"].to_numpy(dtype=float),
-                          float(jobs["job_size"].to_numpy(dtype=float).mean()))
+        model = cls(
+            m=mix.mu,
+            s_job=s_job,
+            s_batch=np.sqrt(np.maximum(mix.sigma**2 - s_job**2, 1e-9)),
+            logit_a=coef[:, 0],
+            logit_b=coef[:, 1],
+            escape=escape,
+        )
+        model.solve_level(
+            jobs["activity"].to_numpy(dtype=float),
+            float(jobs["job_size"].to_numpy(dtype=float).mean()),
+        )
         return model
 
-    def rvs(self, activity: np.ndarray, cardinality: np.ndarray,
-            rng: np.random.Generator, alpha: float = 1.0,
-            log_cut: float | None = None) -> np.ndarray:
+    def rvs(
+        self,
+        activity: np.ndarray,
+        cardinality: np.ndarray,
+        rng: np.random.Generator,
+        alpha: float = 1.0,
+        log_cut: float | None = None,
+    ) -> np.ndarray:
         """Draw one work unit per job; `log_cut` caps the bulk below a threshold."""
         act = _stream_activity(activity, alpha)
         card = np.asarray(cardinality, dtype=int)
         w = self.weights(act)
         pick = (w.cumsum(axis=1) > rng.random(len(act))[:, None]).argmax(axis=1)
-        offset = np.repeat(rng.normal(0.0, 1.0, len(act)) * self.s_batch[pick]
-                           + self.m[pick], card)
+        offset = np.repeat(rng.normal(0.0, 1.0, len(act)) * self.s_batch[pick] + self.m[pick], card)
 
         n = int(card.sum())
         which = np.repeat(pick, card)
@@ -119,36 +132,40 @@ class CompositionJobSize:
         if loose.any():
             spare = np.repeat(w, card, axis=0)[loose]
             which = which.copy()
-            which[loose] = (spare.cumsum(axis=1)
-                            > rng.random(int(loose.sum()))[:, None]).argmax(axis=1)
+            which[loose] = (spare.cumsum(axis=1) > rng.random(int(loose.sum()))[:, None]).argmax(
+                axis=1
+            )
             # an escaped job leaves its batch's level behind as well as its kind
             offset = offset.copy()
-            offset[loose] = (self.m[which[loose]]
-                             + rng.normal(0.0, 1.0, int(loose.sum()))
-                             * self.s_batch[which[loose]])
+            offset[loose] = (
+                self.m[which[loose]]
+                + rng.normal(0.0, 1.0, int(loose.sum())) * self.s_batch[which[loose]]
+            )
         offset = offset + self.mu
         if log_cut is None:
             return np.exp(offset + rng.normal(0.0, 1.0, n) * self.s_job[which])
         return np.exp(offset + _normal_below(log_cut - offset, self.s_job[which], rng))
 
-    def mean_work(self, activity: np.ndarray, log_cut: float | None = None,
-                  n_nodes: int = 24) -> float:
+    def mean_work(
+        self, activity: np.ndarray, log_cut: float | None = None, n_nodes: int = 24
+    ) -> float:
         """Return expected work per job, truncated below `log_cut` when given."""
         act = np.asarray(activity, dtype=float)
         share = self.weights(act)
         nodes, gh = np.polynomial.hermite_e.hermegauss(n_nodes)
         gh = gh / gh.sum()
-        level = (self.mu + self.m[None, :, None]
-                 + self.s_batch[None, :, None] * nodes[None, None, :])
+        level = self.mu + self.m[None, :, None] + self.s_batch[None, :, None] * nodes[None, None, :]
         mass = share[:, :, None] * gh[None, None, :] / len(act)
         sigma = self.s_job[None, :, None]
         if log_cut is None:
-            return float((mass * np.exp(level + 0.5 * sigma ** 2)).sum())
+            return float((mass * np.exp(level + 0.5 * sigma**2)).sum())
         return float((mass * _lognormal_mean_below(level, log_cut, sigma)).sum())
 
-    def solve_level(self, activity: np.ndarray, target: float,
-                    log_cut: float | None = None) -> None:
+    def solve_level(
+        self, activity: np.ndarray, target: float, log_cut: float | None = None
+    ) -> None:
         """Move the level until expected work per job matches `target`."""
+
         def gap(mu: float) -> float:
             self.mu = mu
             return self.mean_work(activity, log_cut) - target
@@ -165,17 +182,26 @@ class CompositionJobSize:
         return self
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "n_components": self.n_components,
-                "m": self.m.tolist(), "s_job": self.s_job.tolist(),
-                "s_batch": self.s_batch.tolist(), "logit_a": self.logit_a.tolist(),
-                "logit_b": self.logit_b.tolist(), "escape": self.escape,
-                "mu": self.mu}
+        return {
+            "name": self.name,
+            "n_components": self.n_components,
+            "m": self.m.tolist(),
+            "s_job": self.s_job.tolist(),
+            "s_batch": self.s_batch.tolist(),
+            "logit_a": self.logit_a.tolist(),
+            "logit_b": self.logit_b.tolist(),
+            "escape": self.escape,
+            "mu": self.mu,
+        }
 
     @classmethod
     def from_dict(cls, blob: dict) -> "CompositionJobSize":
-        return cls(m=np.asarray(blob["m"], dtype=float),
-                   s_job=np.asarray(blob["s_job"], dtype=float),
-                   s_batch=np.asarray(blob["s_batch"], dtype=float),
-                   logit_a=np.asarray(blob["logit_a"], dtype=float),
-                   logit_b=np.asarray(blob["logit_b"], dtype=float),
-                   escape=float(blob["escape"]), mu=float(blob.get("mu", 0.0)))
+        return cls(
+            m=np.asarray(blob["m"], dtype=float),
+            s_job=np.asarray(blob["s_job"], dtype=float),
+            s_batch=np.asarray(blob["s_batch"], dtype=float),
+            logit_a=np.asarray(blob["logit_a"], dtype=float),
+            logit_b=np.asarray(blob["logit_b"], dtype=float),
+            escape=float(blob["escape"]),
+            mu=float(blob.get("mu", 0.0)),
+        )

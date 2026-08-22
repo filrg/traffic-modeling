@@ -49,14 +49,14 @@ def _z2(a: float, b: float, c: float) -> float:
 def _second_moment_ratio(a: float, b: float, c: float, sigma_f: float) -> float:
     """Return E[lambda^2] / m^2."""
     z1 = _z1(a, b, c)
-    return _z2(a, b, c) / max(z1 * z1, 1e-300) * float(np.exp(sigma_f ** 2))
+    return _z2(a, b, c) / max(z1 * z1, 1e-300) * float(np.exp(sigma_f**2))
 
 
 def _zero_prob(m: float, a: float, b: float, c: float, sigma_f: float, kappa: float) -> float:
     z1 = _z1(a, b, c)
     U = _N1[:, None]
     X = _NX[None, :]
-    lam = m / z1 * _gate(U, a, c) * np.exp(b * U) * np.exp(sigma_f * X - 0.5 * sigma_f ** 2)
+    lam = m / z1 * _gate(U, a, c) * np.exp(b * U) * np.exp(sigma_f * X - 0.5 * sigma_f**2)
     p0 = (1.0 + lam / kappa) ** (-kappa)
     return float(_W1 @ p0 @ _WX)
 
@@ -73,13 +73,13 @@ def _pair_moment(a: float, b: float, c: float, r: float) -> float:
 def _corr_u(h: int, phi_slow: float, phi_long: float, w_long: float) -> float:
     """Return corr(u_t, u_t+h) for the two-scale gate latent; w_long = 0 gives phi_slow^h."""
     w2 = w_long * w_long
-    return (1.0 - w2) * phi_slow ** h + w2 * phi_long ** h
+    return (1.0 - w2) * phi_slow**h + w2 * phi_long**h
 
 
 def _autocov(m, a, b, c, sigma_f, corr_u, phi_f, h) -> float:
     z1 = _z1(a, b, c)
     pair = _pair_moment(a, b, c, corr_u)
-    return m * m * (pair / (z1 * z1) * np.exp(sigma_f ** 2 * phi_f ** h) - 1.0)
+    return m * m * (pair / (z1 * z1) * np.exp(sigma_f**2 * phi_f**h) - 1.0)
 
 
 def _gamma0(m, a, b, c, sigma_f, kappa) -> float:
@@ -90,8 +90,10 @@ def _gamma0(m, a, b, c, sigma_f, kappa) -> float:
 def _hourly_acf1(m, a, b, c, sigma_f, kappa, phi_s, phi_f, phi_l=None, w_long=0.0) -> float:
     g0 = _gamma0(m, a, b, c, sigma_f, kappa)
     phi_l = phi_s if phi_l is None else phi_l
-    gh = {h: _autocov(m, a, b, c, sigma_f, _corr_u(h, phi_s, phi_l, w_long), phi_f, h)
-          for h in HOURLY_ACF_LAG_WEIGHTS}
+    gh = {
+        h: _autocov(m, a, b, c, sigma_f, _corr_u(h, phi_s, phi_l, w_long), phi_f, h)
+        for h in HOURLY_ACF_LAG_WEIGHTS
+    }
     return hourly_acf1_from_autocov(g0, gh)
 
 
@@ -120,11 +122,20 @@ class NBGatedLatent(CountModel):
         self.latent_mode_: np.ndarray | None = None
 
     @classmethod
-    def calibrate(cls, mean: float, variance: float, zero_fraction: float, acf_1h: float,
-                  sharpness: float = 4.0, kappa: float = 8.0, sigma_fast: float = 0.6,
-                  tau_fast_bins: float = 2.0,
-                  acf_long: Mapping[int, float] | None = None,
-                  tau_long_bins: float | None = None, w_long: float = 0.0) -> "NBGatedLatent":
+    def calibrate(
+        cls,
+        mean: float,
+        variance: float,
+        zero_fraction: float,
+        acf_1h: float,
+        sharpness: float = 4.0,
+        kappa: float = 8.0,
+        sigma_fast: float = 0.6,
+        tau_fast_bins: float = 2.0,
+        acf_long: Mapping[int, float] | None = None,
+        tau_long_bins: float | None = None,
+        w_long: float = 0.0,
+    ) -> "NBGatedLatent":
         """Calibrate to the trace moments; no likelihood is evaluated.
 
         `acf_long` maps base-bin lags to target ACF values and enables the second
@@ -145,8 +156,12 @@ class NBGatedLatent(CountModel):
 
         best = None
         for c0, b0 in [(stats.norm.ppf(zero_fraction), 1.0), (0.5, 0.6), (1.2, 1.4)]:
-            res = minimize(loss, [c0, b0], method="Nelder-Mead",
-                           options={"xatol": 1e-8, "fatol": 1e-12, "maxiter": 2000})
+            res = minimize(
+                loss,
+                [c0, b0],
+                method="Nelder-Mead",
+                options={"xatol": 1e-8, "fatol": 1e-12, "maxiter": 2000},
+            )
             if best is None or res.fun < best.fun:
                 best = res
         c, b = float(best.x[0]), float(best.x[1])
@@ -155,9 +170,14 @@ class NBGatedLatent(CountModel):
 
         def solve_tau_slow(phi_l: float, w: float) -> float:
             """Solve for the tau_slow that puts the hourly lag-1 ACF on target."""
+
             def acf_gap(tau_s):
-                return _hourly_acf1(m, a, b, c, sigma_fast, kappa,
-                                    half_life_to_phi(tau_s), phi_f, phi_l, w) - acf_1h
+                return (
+                    _hourly_acf1(
+                        m, a, b, c, sigma_fast, kappa, half_life_to_phi(tau_s), phi_f, phi_l, w
+                    )
+                    - acf_1h
+                )
 
             lo, hi = 0.5, 5000.0
             if acf_gap(lo) * acf_gap(hi) < 0:
@@ -176,17 +196,34 @@ class NBGatedLatent(CountModel):
                 tau_try = float(np.exp(np.clip(theta[1], np.log(2.0), np.log(5000.0))))
                 phi_l = half_life_to_phi(tau_try)
                 tau_s = solve_tau_slow(phi_l, w_try)
-                model_acf = np.array([
-                    _base_acf(m, a, b, c, sigma_fast, kappa, half_life_to_phi(tau_s),
-                              phi_f, phi_l, w_try, int(h)) for h in lags
-                ])
+                model_acf = np.array(
+                    [
+                        _base_acf(
+                            m,
+                            a,
+                            b,
+                            c,
+                            sigma_fast,
+                            kappa,
+                            half_life_to_phi(tau_s),
+                            phi_f,
+                            phi_l,
+                            w_try,
+                            int(h),
+                        )
+                        for h in lags
+                    ]
+                )
                 return float(np.sum((model_acf - targets) ** 2))
 
             best_long = None
             for w0, t0 in [(0.5, 200.0), (0.3, 500.0), (0.7, 96.0)]:
-                res = minimize(long_loss, [float(np.log(w0 / (1 - w0))), float(np.log(t0))],
-                               method="Nelder-Mead",
-                               options={"xatol": 1e-6, "fatol": 1e-14, "maxiter": 800})
+                res = minimize(
+                    long_loss,
+                    [float(np.log(w0 / (1 - w0))), float(np.log(t0))],
+                    method="Nelder-Mead",
+                    options={"xatol": 1e-6, "fatol": 1e-14, "maxiter": 800},
+                )
                 if best_long is None or res.fun < best_long.fun:
                     best_long = res
             w = float(expit(best_long.x[0]))
@@ -198,21 +235,40 @@ class NBGatedLatent(CountModel):
 
         model = cls(sharpness=a)
         model.params_ = {
-            "mean": m, "b": b, "c": c, "a": a,
-            "tau_slow_bins": float(tau_slow), "phi_slow": phi_s,
-            "tau_long_bins": float(tau_long), "phi_long": float(phi_l if phi_l is not None else phi_s),
+            "mean": m,
+            "b": b,
+            "c": c,
+            "a": a,
+            "tau_slow_bins": float(tau_slow),
+            "phi_slow": phi_s,
+            "tau_long_bins": float(tau_long),
+            "phi_long": float(phi_l if phi_l is not None else phi_s),
             "w_long": w,
-            "sigma_fast": float(sigma_fast), "tau_fast_bins": float(tau_fast_bins),
-            "phi_fast": phi_f, "kappa": float(kappa), "Z1": _z1(a, b, c),
+            "sigma_fast": float(sigma_fast),
+            "tau_fast_bins": float(tau_fast_bins),
+            "phi_fast": phi_f,
+            "kappa": float(kappa),
+            "Z1": _z1(a, b, c),
         }
         return model
 
     @classmethod
-    def calibrate_debiased(cls, mean: float, variance: float, zero_fraction: float, acf_1h: float,
-                           acf_long: Mapping[int, float], n_bins: int, seed: int = 0,
-                           n_paths: int = 8, n_rounds: int = 2, max_inflation: float = 3.0,
-                           marginals: bool = False, marginal_paths: int = 200,
-                           **kwargs) -> "NBGatedLatent":
+    def calibrate_debiased(
+        cls,
+        mean: float,
+        variance: float,
+        zero_fraction: float,
+        acf_1h: float,
+        acf_long: Mapping[int, float],
+        n_bins: int,
+        seed: int = 0,
+        n_paths: int = 8,
+        n_rounds: int = 2,
+        max_inflation: float = 3.0,
+        marginals: bool = False,
+        marginal_paths: int = 200,
+        **kwargs,
+    ) -> "NBGatedLatent":
         """Calibrate so the model's statistics at length `n_bins` hit the target.
 
         `calibrate` matches an analytic ACF to a target measured on one finite path,
@@ -229,11 +285,20 @@ class NBGatedLatent(CountModel):
         targets = {int(h): float(v) for h, v in acf_long.items()}
         lags = sorted(targets)
         adjusted = dict(targets)
-        m_targets = {"variance": float(variance), "zero_fraction": float(zero_fraction),
-                     "acf_1h": float(acf_1h)}
+        m_targets = {
+            "variance": float(variance),
+            "zero_fraction": float(zero_fraction),
+            "acf_1h": float(acf_1h),
+        }
         m_adj = dict(m_targets)
-        model = cls.calibrate(mean, m_adj["variance"], m_adj["zero_fraction"], m_adj["acf_1h"],
-                              acf_long=adjusted, **kwargs)
+        model = cls.calibrate(
+            mean,
+            m_adj["variance"],
+            m_adj["zero_fraction"],
+            m_adj["acf_1h"],
+            acf_long=adjusted,
+            **kwargs,
+        )
 
         for _ in range(max(int(n_rounds), 1)):
             rng = np.random.default_rng(seed)
@@ -242,8 +307,19 @@ class NBGatedLatent(CountModel):
             p = model.params_
             attenuation = {}
             for h in lags:
-                ana = _base_acf(p["mean"], p["a"], p["b"], p["c"], p["sigma_fast"], p["kappa"],
-                                p["phi_slow"], p["phi_fast"], p["phi_long"], p["w_long"], h)
+                ana = _base_acf(
+                    p["mean"],
+                    p["a"],
+                    p["b"],
+                    p["c"],
+                    p["sigma_fast"],
+                    p["kappa"],
+                    p["phi_slow"],
+                    p["phi_fast"],
+                    p["phi_long"],
+                    p["w_long"],
+                    h,
+                )
                 r = float(sim[h]) / ana if ana > 1e-9 else 1.0
                 # one-sided: the correction may only undo attenuation
                 attenuation[h] = float(np.clip(r, 1.0 / max_inflation, 1.0))
@@ -260,16 +336,24 @@ class NBGatedLatent(CountModel):
                     "zero_fraction": float(np.mean([(x == 0).mean() for x in mpaths])),
                     "acf_1h": float(np.mean([_acf(_aggregate(x, 4), [1])[1] for x in mpaths])),
                 }
-                analytic = {"variance": float(imp["IDC_base"]),
-                            "zero_fraction": float(imp["P_zero"]),
-                            "acf_1h": float(imp["acf_1h_lag1"])}
+                analytic = {
+                    "variance": float(imp["IDC_base"]),
+                    "zero_fraction": float(imp["P_zero"]),
+                    "acf_1h": float(imp["acf_1h_lag1"]),
+                }
                 for k in m_targets:
                     r = measured[k] / analytic[k] if analytic[k] > 1e-12 else 1.0
                     # two-sided: the zero fraction is an indicator average and can
                     # bias either way, unlike the mean-subtracted statistics
                     m_adj[k] = m_targets[k] / float(np.clip(r, 1.0 / max_inflation, max_inflation))
-            model = cls.calibrate(mean, m_adj["variance"], m_adj["zero_fraction"], m_adj["acf_1h"],
-                                  acf_long=adjusted, **kwargs)
+            model = cls.calibrate(
+                mean,
+                m_adj["variance"],
+                m_adj["zero_fraction"],
+                m_adj["acf_1h"],
+                acf_long=adjusted,
+                **kwargs,
+            )
 
         model.params_["acf_attenuation"] = float(np.mean(list(attenuation.values())))
         return model
@@ -298,17 +382,27 @@ class NBGatedLatent(CountModel):
             }
         )
 
-    def _eta_from_states(self, u: np.ndarray, x: np.ndarray, alpha: float,
-                         gate_shift: float) -> np.ndarray:
+    def _eta_from_states(
+        self, u: np.ndarray, x: np.ndarray, alpha: float, gate_shift: float
+    ) -> np.ndarray:
         p = self.params_
         base = np.log(alpha * p["mean"]) - np.log(p["Z1"]) - 0.5 * p["sigma_fast"] ** 2
         return np.clip(
-            base + np.log(_gate(u, p["a"], p["c"] - gate_shift) + 1e-300) + p["b"] * u + x, -30.0, 30.0
+            base + np.log(_gate(u, p["a"], p["c"] - gate_shift) + 1e-300) + p["b"] * u + x,
+            -30.0,
+            30.0,
         )
 
-    def simulate(self, n_bins: int, rng: np.random.Generator, alpha: float = 1.0,
-                 kappa_rule: str = "proportional", gate_shift: float = 0.0,
-                 return_intensity: bool = False, **kwargs):
+    def simulate(
+        self,
+        n_bins: int,
+        rng: np.random.Generator,
+        alpha: float = 1.0,
+        kappa_rule: str = "proportional",
+        gate_shift: float = 0.0,
+        return_intensity: bool = False,
+        **kwargs,
+    ):
         p = self.params_
         phi_s, phi_l, w = self._slow_scales()
         u = ar1_path(n_bins, 1.0, phi_s, rng)
@@ -326,7 +420,7 @@ class NBGatedLatent(CountModel):
         phi_s, phi_f = half_life_to_phi(tau_s), half_life_to_phi(tau_f)
         Qu = ar1_precision(T, 1.0, phi_s)
         Qx = ar1_precision(T, sf, phi_f)
-        base = np.log(m) - np.log(max(_z1(a, b, c), 1e-300)) - 0.5 * sf ** 2
+        base = np.log(m) - np.log(max(_z1(a, b, c), 1e-300)) - 0.5 * sf**2
         z = np.zeros(2 * T) if x0 is None else x0.copy()
 
         def eta_of(zv):
@@ -335,8 +429,11 @@ class NBGatedLatent(CountModel):
 
         def joint(zv):
             eta, u, x = eta_of(zv)
-            return (nb2_loglik(n, np.exp(eta), kappa)
-                    - 0.5 * float(u @ (Qu @ u)) - 0.5 * float(x @ (Qx @ x)))
+            return (
+                nb2_loglik(n, np.exp(eta), kappa)
+                - 0.5 * float(u @ (Qu @ u))
+                - 0.5 * float(x @ (Qx @ x))
+            )
 
         cur, gnorm = joint(z), np.inf
         for _ in range(max_iter):
@@ -345,15 +442,18 @@ class NBGatedLatent(CountModel):
             s = nb2_score_eta(n, lam, kappa)
             w = np.maximum(nb2_info_eta(n, lam, kappa), 1e-10)
             g = _gate(u, a, c)
-            Ju = b + a * (1.0 - g)                      # d eta / d u
+            Ju = b + a * (1.0 - g)  # d eta / d u
             grad = np.concatenate([Ju * s - Qu @ u, s - Qx @ x])
             gnorm = float(np.linalg.norm(grad) / np.sqrt(grad.size))
             if gnorm < tol:
                 break
             # Fisher scoring: per-bin outer([Ju, 1]) * w gives a PSD observation block
             H = sp.bmat(
-                [[Qu + sp.diags(Ju * Ju * w), sp.diags(Ju * w)],
-                 [sp.diags(Ju * w), Qx + sp.diags(w)]], format="csc"
+                [
+                    [Qu + sp.diags(Ju * Ju * w), sp.diags(Ju * w)],
+                    [sp.diags(Ju * w), Qx + sp.diags(w)],
+                ],
+                format="csc",
             )
             try:
                 step = spla.spsolve(H, grad)
@@ -374,8 +474,8 @@ class NBGatedLatent(CountModel):
         w = np.maximum(nb2_info_eta(n, lam, kappa), 1e-10)
         Ju = b + a * (1.0 - _gate(u, a, c))
         H = sp.bmat(
-            [[Qu + sp.diags(Ju * Ju * w), sp.diags(Ju * w)],
-             [sp.diags(Ju * w), Qx + sp.diags(w)]], format="csc"
+            [[Qu + sp.diags(Ju * Ju * w), sp.diags(Ju * w)], [sp.diags(Ju * w), Qx + sp.diags(w)]],
+            format="csc",
         )
         return z, H, cur, gnorm, (phi_s, phi_f)
 
@@ -387,8 +487,9 @@ class NBGatedLatent(CountModel):
         if not np.all(np.isfinite([m, b, c, tau_s, sf, tau_f, kappa])):
             return -np.inf, None, np.inf
         T = len(n)
-        z, H, joint_at_mode, gnorm, (phi_s, phi_f) = self._mode(n, m, b, c, tau_s, sf,
-                                     tau_f, kappa, x0)
+        z, H, joint_at_mode, gnorm, (phi_s, phi_f) = self._mode(
+            n, m, b, c, tau_s, sf, tau_f, kappa, x0
+        )
         try:
             logdet_H = sparse_logdet(H)
         except (RuntimeError, ValueError, np.linalg.LinAlgError):
@@ -396,8 +497,15 @@ class NBGatedLatent(CountModel):
         logdet_Q = ar1_logdet_precision(T, 1.0, phi_s) + ar1_logdet_precision(T, sf, phi_f)
         return float(joint_at_mode + 0.5 * logdet_Q - 0.5 * logdet_H), z, gnorm
 
-    def fit(self, counts: np.ndarray, n_restarts: int = 2, maxiter: int = 200,
-            seed: int = 0, verbose: bool = False, **kwargs) -> "NBGatedLatent":
+    def fit(
+        self,
+        counts: np.ndarray,
+        n_restarts: int = 2,
+        maxiter: int = 200,
+        seed: int = 0,
+        verbose: bool = False,
+        **kwargs,
+    ) -> "NBGatedLatent":
         """Fit the single-scale submodel (`w_long = 0`) by Laplace MLE.
 
         The second slow scale is calibrated by moments, never fitted.
@@ -406,17 +514,29 @@ class NBGatedLatent(CountModel):
         n = np.asarray(counts, dtype=float)
         hourly = _aggregate(n, 4)
         start_model = NBGatedLatent.calibrate(
-            mean=float(n.mean()), variance=float(n.var(ddof=1)),
+            mean=float(n.mean()),
+            variance=float(n.var(ddof=1)),
             zero_fraction=float((n == 0).mean()),
             acf_1h=float(np.nan_to_num(_acf(hourly, [1])[1], nan=0.3)),
             sharpness=self.a,
         )
         p0 = start_model.params_
-        base = np.array([np.log(p0["mean"]), p0["b"], p0["c"], np.log(p0["tau_slow_bins"]),
-                         np.log(p0["sigma_fast"]), np.log(p0["tau_fast_bins"]), np.log(p0["kappa"])])
+        base = np.array(
+            [
+                np.log(p0["mean"]),
+                p0["b"],
+                p0["c"],
+                np.log(p0["tau_slow_bins"]),
+                np.log(p0["sigma_fast"]),
+                np.log(p0["tau_fast_bins"]),
+                np.log(p0["kappa"]),
+            ]
+        )
 
         rng = np.random.default_rng(seed)
-        starts = [base] + [base + rng.normal(0, 0.3, size=base.shape) for _ in range(max(n_restarts, 1) - 1)]
+        starts = [base] + [
+            base + rng.normal(0, 0.3, size=base.shape) for _ in range(max(n_restarts, 1) - 1)
+        ]
 
         cache: dict[bytes, float] = {}
         warm = {"z": None}
@@ -435,8 +555,12 @@ class NBGatedLatent(CountModel):
         best, best_theta, best_res = np.inf, None, None
         for theta0 in starts:
             warm["z"] = None
-            res = minimize(negll, theta0, method="L-BFGS-B",
-                           options={"maxiter": maxiter, "maxfun": 5 * maxiter, "eps": 1e-4, "ftol": 1e-10})
+            res = minimize(
+                negll,
+                theta0,
+                method="L-BFGS-B",
+                options={"maxiter": maxiter, "maxfun": 5 * maxiter, "eps": 1e-4, "ftol": 1e-10},
+            )
             if verbose:
                 print(f"  restart -> nll {res.fun:.2f}")
             if res.fun < best:
@@ -449,22 +573,43 @@ class NBGatedLatent(CountModel):
 
         warnings: list[str] = []
         if tau_s * 4 > len(n):
-            warnings.append("tau_slow within a factor 4 of the horizon: slow scale weakly identified")
+            warnings.append(
+                "tau_slow within a factor 4 of the horizon: slow scale weakly identified"
+            )
         if abs(b) < 5e-2:
             warnings.append("b near zero: level decoupled from the gate latent")
         if sf < 1e-2:
             warnings.append("sigma_fast at boundary: prefer dropping the fast component")
         if float(np.exp(log_k)) > 1e3:
-            warnings.append("kappa very large: overdispersion pushed into the latent (kappa/sigma_f confound)")
+            warnings.append(
+                "kappa very large: overdispersion pushed into the latent (kappa/sigma_f confound)"
+            )
 
         self.params_ = {
-            "mean": float(np.exp(log_m)), "b": float(b), "c": float(c), "a": self.a,
-            "tau_slow_bins": tau_s, "phi_slow": half_life_to_phi(tau_s),
+            "mean": float(np.exp(log_m)),
+            "b": float(b),
+            "c": float(c),
+            "a": self.a,
+            "tau_slow_bins": tau_s,
+            "phi_slow": half_life_to_phi(tau_s),
             # second scale inert, not absent: keys stay present for round-tripping
-            "tau_long_bins": tau_s, "phi_long": half_life_to_phi(tau_s), "w_long": 0.0,
-            "sigma_fast": sf, "tau_fast_bins": tau_f, "phi_fast": half_life_to_phi(tau_f),
-            "kappa": float(np.exp(log_k)), "Z1": _z1(self.a, float(b), float(c)),
+            "tau_long_bins": tau_s,
+            "phi_long": half_life_to_phi(tau_s),
+            "w_long": 0.0,
+            "sigma_fast": sf,
+            "tau_fast_bins": tau_f,
+            "phi_fast": half_life_to_phi(tau_f),
+            "kappa": float(np.exp(log_k)),
+            "Z1": _z1(self.a, float(b), float(c)),
         }
-        self.report = FitReport(bool(best_res.success), int(best_res.nit), float(gnorm), float(ll),
-                                7, len(n), warnings, restarts=len(starts))
+        self.report = FitReport(
+            bool(best_res.success),
+            int(best_res.nit),
+            float(gnorm),
+            float(ll),
+            7,
+            len(n),
+            warnings,
+            restarts=len(starts),
+        )
         return self

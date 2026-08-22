@@ -6,8 +6,13 @@ import numpy as np
 import pandas as pd
 
 
-def marginal_feasibility(mean: float, variance: float, zero_fraction: float, target_acf: float,
-                         kappa_grid: Sequence[float] | None = None) -> pd.DataFrame:
+def marginal_feasibility(
+    mean: float,
+    variance: float,
+    zero_fraction: float,
+    target_acf: float,
+    kappa_grid: Sequence[float] | None = None,
+) -> pd.DataFrame:
     """Sweep the constraint e^V (1 + 1/kappa) = C and report what is reachable.
 
     Any Gaussian log-latent + NB2 model that matches `mean` and `variance` at
@@ -26,7 +31,10 @@ def marginal_feasibility(mean: float, variance: float, zero_fraction: float, tar
         V = float(np.log(eV))
         mu, s = np.log(m) - V / 2.0, np.sqrt(V)
         p0 = integrate.quad(
-            lambda z: stats.norm.pdf(z) * (1.0 + np.exp(mu + s * z) / kappa) ** (-kappa), -8, 8, limit=200
+            lambda z: stats.norm.pdf(z) * (1.0 + np.exp(mu + s * z) / kappa) ** (-kappa),
+            -8,
+            8,
+            limit=200,
         )[0]
         rows.append(
             {

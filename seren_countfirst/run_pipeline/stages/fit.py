@@ -10,9 +10,14 @@ from ..config import LONG_ACF_LAGS, MM4_KNOBS, RUNG_KEYS, SEED
 from ..state import load_state, save_state
 
 # state key -> published model name for the gated family
-_GATED_NAMES = {"gated_mm": "nb_gated_mm", "gated_mm2": "nb_gated_mm2",
-                "gated_mm3": "nb_gated_mm3", "gated_mm4": "nb_gated_mm4",
-                "gated_mm5": "nb_gated_mm5", "gated_nogate": "nb_gated_mm4_nogate"}
+_GATED_NAMES = {
+    "gated_mm": "nb_gated_mm",
+    "gated_mm2": "nb_gated_mm2",
+    "gated_mm3": "nb_gated_mm3",
+    "gated_mm4": "nb_gated_mm4",
+    "gated_mm5": "nb_gated_mm5",
+    "gated_nogate": "nb_gated_mm4_nogate",
+}
 
 
 def _fit_one(name: str, state: dict):
@@ -34,14 +39,22 @@ def _fit_one(name: str, state: dict):
         if name == "ingarch_mle":
             return NBINGARCH().fit(n, n_restarts=3, maxiter=400, seed=SEED)
         tm, a_tr = state["trace_marginals"], acf(n, (1, 4))
-        model = NBINGARCH.calibrate(mean=tm["mean"], variance=tm["IDC_15m"] * tm["mean"],
-                                    acf_lag1=float(a_tr[1]), acf_lag4=float(a_tr[4]), seed=SEED)
-        return model
+        return NBINGARCH.calibrate(
+            mean=tm["mean"],
+            variance=tm["IDC_15m"] * tm["mean"],
+            acf_lag1=float(a_tr[1]),
+            acf_lag4=float(a_tr[4]),
+            seed=SEED,
+        )
     if name in _GATED_NAMES:
         # moment calibration against the frozen trace facts, never a likelihood fit
         tm = state["trace_marginals"]
-        args = dict(mean=tm["mean"], variance=tm["IDC_15m"] * tm["mean"],
-                    zero_fraction=tm["zero_frac"], acf_1h=tm["acf_1h_lag1"])
+        args = {
+            "mean": tm["mean"],
+            "variance": tm["IDC_15m"] * tm["mean"],
+            "zero_fraction": tm["zero_frac"],
+            "acf_1h": tm["acf_1h_lag1"],
+        }
         if name == "gated_mm":
             model = NBGatedLatent.calibrate(**args)
         else:
@@ -59,8 +72,12 @@ def _fit_one(name: str, state: dict):
                     knobs = {**knobs, "sharpness": 0.0}
                 # mm5 debiases all four calibration targets, not just acf_long
                 model = NBGatedLatent.calibrate_debiased(
-                    **args, acf_long=long_targets, n_bins=state["n_bins"], seed=SEED,
-                    marginals=(name == "gated_mm5"), **knobs
+                    **args,
+                    acf_long=long_targets,
+                    n_bins=state["n_bins"],
+                    seed=SEED,
+                    marginals=(name == "gated_mm5"),
+                    **knobs,
                 )
         model.name = _GATED_NAMES[name]
         if name == "gated_nogate":
@@ -82,14 +99,22 @@ def stage_fit(which: list[str]) -> None:
         rep = m.report
         if rep is None:
             implied = m.implied_marginals()
-            print(f"[{key}] {m.name}: {time.time()-t:.0f}s  moment-calibrated (no likelihood fit)")
+            print(
+                f"[{key}] {m.name}: {time.time() - t:.0f}s  moment-calibrated (no likelihood fit)"
+            )
             print("   implied:", {k: round(float(v), 3) for k, v in implied.items()})
         else:
-            print(f"[{key}] {m.name}: {time.time()-t:.0f}s  ll={rep.loglik:.1f}  AIC={rep.aic:.1f}  "
-                  f"converged={rep.converged}  warnings={rep.boundary_warnings or '-'}")
-        print("   params:",
-              {k: (np.round(v, 3).tolist() if isinstance(v, np.ndarray) else round(float(v), 3))
-                             for k, v in m.params_.items() if not isinstance(v,
-                                                         np.ndarray) or v.size <= 4})
+            print(
+                f"[{key}] {m.name}: {time.time() - t:.0f}s  ll={rep.loglik:.1f}  AIC={rep.aic:.1f}  "
+                f"converged={rep.converged}  warnings={rep.boundary_warnings or '-'}"
+            )
+        print(
+            "   params:",
+            {
+                k: (np.round(v, 3).tolist() if isinstance(v, np.ndarray) else round(float(v), 3))
+                for k, v in m.params_.items()
+                if not isinstance(v, np.ndarray) or v.size <= 4
+            },
+        )
     state["models"] = models
     save_state(state)

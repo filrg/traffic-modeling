@@ -14,9 +14,12 @@ if TYPE_CHECKING:
     from .conditional import ConditionalJobSize
 
 
-def rolling_origin_windows(bins: pd.DatetimeIndex, validation_days: float = 21.0,
-                           n_folds: int = 4, min_train_days: float = 30.0
-                           ) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+def rolling_origin_windows(
+    bins: pd.DatetimeIndex,
+    validation_days: float = 21.0,
+    n_folds: int = 4,
+    min_train_days: float = 30.0,
+) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
     """Return (train_end, validation_end) pairs; training always precedes validation.
 
     Same geometry as the count model's folds, so the two sides of the generator
@@ -26,23 +29,30 @@ def rolling_origin_windows(bins: pd.DatetimeIndex, validation_days: float = 21.0
     span = (stop - start) / pd.Timedelta(days=1)
     if span < float(min_train_days) + float(validation_days):
         return []
-    origins = np.unique(np.linspace(float(min_train_days), span - float(validation_days),
-                                    n_folds))
-    return [(start + pd.Timedelta(days=float(o)),
-             start + pd.Timedelta(days=float(o) + float(validation_days)))
-            for o in origins]
+    origins = np.unique(np.linspace(float(min_train_days), span - float(validation_days), n_folds))
+    return [
+        (
+            start + pd.Timedelta(days=float(o)),
+            start + pd.Timedelta(days=float(o) + float(validation_days)),
+        )
+        for o in origins
+    ]
 
 
 def _window_arrays(window: pd.DataFrame):
     batches = batch_frame(window)
     card = batches["cardinality"].to_numpy(dtype=int)
-    return (batches["activity"].to_numpy(dtype=float), card,
-            bin_grid_index(batches["bin"]),
-            np.repeat(batches["bin"].to_numpy(), card))
+    return (
+        batches["activity"].to_numpy(dtype=float),
+        card,
+        bin_grid_index(batches["bin"]),
+        np.repeat(batches["bin"].to_numpy(), card),
+    )
 
 
-def score_window(model: "TwoPartJobSize", window: pd.DataFrame, n_rep: int = 20,
-                 seed: int = 42) -> dict[str, float]:
+def score_window(
+    model: "TwoPartJobSize", window: pd.DataFrame, n_rep: int = 20, seed: int = 42
+) -> dict[str, float]:
     """Return what `model` produces on a window's own batch structure."""
     activity, card, index, bin_of_job = _window_arrays(window)
     sizes = window["job_size"].to_numpy(dtype=float)
@@ -62,10 +72,17 @@ def score_window(model: "TwoPartJobSize", window: pd.DataFrame, n_rep: int = 20,
     return out
 
 
-def fold_report(jobs: pd.DataFrame, validation_days: float = 21.0, n_folds: int = 4,
-                min_train_days: float = 30.0, quantile: float = TAIL_QUANTILE,
-                n_init: int = 4, seed: int = 42, n_rep: int = 20,
-                bulk_kind: str = "composition") -> pd.DataFrame:
+def fold_report(
+    jobs: pd.DataFrame,
+    validation_days: float = 21.0,
+    n_folds: int = 4,
+    min_train_days: float = 30.0,
+    quantile: float = TAIL_QUANTILE,
+    n_init: int = 4,
+    seed: int = 42,
+    n_rep: int = 20,
+    bulk_kind: str = "composition",
+) -> pd.DataFrame:
     """Fit on each expanding training window and score on the window that follows.
 
     Three arms per fold: `out_of_sample` is the training-fitted law scored on
@@ -74,42 +91,62 @@ def fold_report(jobs: pd.DataFrame, validation_days: float = 21.0, n_folds: int 
     itself.
     """
     rows = []
-    windows = rolling_origin_windows(pd.DatetimeIndex(jobs["bin"]), validation_days,
-                                     n_folds, min_train_days)
+    windows = rolling_origin_windows(
+        pd.DatetimeIndex(jobs["bin"]), validation_days, n_folds, min_train_days
+    )
     for fold, (train_end, val_end) in enumerate(windows, start=1):
         at = jobs["bin"]
         train = jobs.loc[at < train_end].reset_index(drop=True)
         window = jobs.loc[(at >= train_end) & (at < val_end)].reset_index(drop=True)
-        base = {"fold": fold, "train_end": train_end, "n_train": len(train),
-                "n_val": len(window)}
+        base = {"fold": fold, "train_end": train_end, "n_train": len(train), "n_val": len(window)}
         if window.empty or train.empty:
             continue
         for arm, source in (("out_of_sample", train), ("in_window", window)):
             try:
-                model = TwoPartJobSize.fit(source, quantile=quantile, n_init=n_init,
-                                           seed=seed, bulk_kind=bulk_kind)
+                model = TwoPartJobSize.fit(
+                    source, quantile=quantile, n_init=n_init, seed=seed, bulk_kind=bulk_kind
+                )
             except (ValueError, RuntimeError) as exc:
                 rows.append({**base, "arm": arm, "note": str(exc)[:70]})
                 continue
             composition = isinstance(model.bulk, CompositionJobSize)
-            rows.append({**base, "arm": arm, "k": model.bulk.n_components,
-                         "beta": np.nan if composition else model.bulk.beta,
-                         "escape": model.bulk.escape if composition else np.nan,
-                         "mu": model.bulk.mu, "cut": model.cut,
-                         "rate_a": model.rate_a, "rate_b": model.rate_b,
-                         **score_window(model, window, n_rep, seed)})
+            rows.append(
+                {
+                    **base,
+                    "arm": arm,
+                    "k": model.bulk.n_components,
+                    "beta": np.nan if composition else model.bulk.beta,
+                    "escape": model.bulk.escape if composition else np.nan,
+                    "mu": model.bulk.mu,
+                    "cut": model.cut,
+                    "rate_a": model.rate_a,
+                    "rate_b": model.rate_b,
+                    **score_window(model, window, n_rep, seed),
+                }
+            )
         by_bin = window.groupby("bin")["job_size"]
-        rows.append({**base, "arm": "observed",
-                     **offered_work_stats(by_bin.sum().to_numpy(),
-                                          by_bin.size().to_numpy()),
-                     "ks_job_marginal": 0.0, "mean_work_ratio": 1.0,
-                     "median_ratio": 1.0})
+        rows.append(
+            {
+                **base,
+                "arm": "observed",
+                **offered_work_stats(by_bin.sum().to_numpy(), by_bin.size().to_numpy()),
+                "ks_job_marginal": 0.0,
+                "mean_work_ratio": 1.0,
+                "median_ratio": 1.0,
+            }
+        )
     return pd.DataFrame(rows)
 
 
-def assign_work(batch_times_s: np.ndarray, batch_sizes: np.ndarray, counts: np.ndarray,
-                bin_seconds: float, model: ConditionalJobSize | TwoPartJobSize,
-                rng: np.random.Generator, alpha: float = 1.0) -> np.ndarray:
+def assign_work(
+    batch_times_s: np.ndarray,
+    batch_sizes: np.ndarray,
+    counts: np.ndarray,
+    bin_seconds: float,
+    model: ConditionalJobSize | TwoPartJobSize,
+    rng: np.random.Generator,
+    alpha: float = 1.0,
+) -> np.ndarray:
     """Return one work unit per job of a reconstruction, in job-arrival order.
 
     Activity is read from the generated counts, so the size model sees the bin
@@ -141,7 +178,6 @@ def offered_work_stats(work: np.ndarray, n_jobs: np.ndarray) -> dict[str, float]
     return {
         "cv": float(w.std(ddof=1) / w.mean()),
         "q99_over_median": float(np.quantile(w, 0.99) / np.median(w)),
-        "spearman_jobs_work": float(stats.spearmanr(np.asarray(n_jobs, dtype=float),
-                                                    w).statistic),
+        "spearman_jobs_work": float(stats.spearmanr(np.asarray(n_jobs, dtype=float), w).statistic),
         "top5pct_share": float(ranked[:top].sum() / ranked.sum()),
     }
