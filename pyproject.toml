@@ -26,7 +26,7 @@ dev = [
 seren-pipeline = "seren_countfirst.run_pipeline.__main__:cli"
 
 [tool.setuptools.packages.find]
-include = ["seren_countfirst*"]
+include = ["seren_countfirst*", "traffic_modeling*"]
 
 [tool.pytest.ini_options]
 testpaths = ["seren_countfirst/tests"]

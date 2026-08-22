@@ -4,9 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from traffic_modeling.core import RunSpec
+
 from ..paths import RESULTS, STATE_DIR, TRACE_CSV
 from ..state import PipelineState, load_portable_state, save_portable_state
 from .config import SEED
+from .spec import DEFAULT_RUN_SPEC
 
 
 class StateStore(Protocol):
@@ -36,6 +39,30 @@ class PipelineContext:
     results: Path
     state_store: StateStore
     seed: int = SEED
+    run_spec: RunSpec | None = None
+
+    def __post_init__(self) -> None:
+        if self.run_spec is not None and self.seed != self.run_spec.seed:
+            raise ValueError(
+                f"context seed {self.seed} does not match RunSpec seed {self.run_spec.seed}"
+            )
+
+    @classmethod
+    def for_run(
+        cls,
+        *,
+        trace_csv: Path,
+        results: Path,
+        state_store: StateStore,
+        run_spec: RunSpec,
+    ) -> PipelineContext:
+        return cls(
+            trace_csv=trace_csv,
+            results=results,
+            state_store=state_store,
+            seed=run_spec.seed,
+            run_spec=run_spec,
+        )
 
     def result(self, relative_path: str | Path) -> Path:
         relative = Path(relative_path)
@@ -57,6 +84,7 @@ def default_context() -> PipelineContext:
         trace_csv=TRACE_CSV,
         results=RESULTS,
         state_store=PortableStateStore(STATE_DIR),
+        run_spec=DEFAULT_RUN_SPEC,
     )
 
 

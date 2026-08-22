@@ -14,6 +14,7 @@ from .config import (
     SEED,
 )
 from .context import PipelineContext, PortableStateStore, StateStore, default_context
+from .spec import DEFAULT_RUN_SPEC
 from .registry import (
     REPRODUCTION_STEPS,
     STAGE_SPECS,
@@ -37,6 +38,7 @@ from .registry import (
 __all__ = [
     "AUDIT",
     "CERTIFY_SEEDS",
+    "DEFAULT_RUN_SPEC",
     "FOLD_KWARGS",
     "LONG_ACF_LAGS",
     "MM4_KNOBS",
