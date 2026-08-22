@@ -1,5 +1,3 @@
-"""Typed Seren GLI-NB variants and their model builders."""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping

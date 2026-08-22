@@ -83,7 +83,8 @@ def main() -> None:
     ap.add_argument(
         "--quick",
         action="store_true",
-        help="skip jobsize, jobsize_folds and certify (~60 of the ~80 minutes)",
+        help="skip jobsize, jobsize_folds, dependent workload, and certify "
+        "(~60 of the ~80 minutes)",
     )
     ap.add_argument(
         "--verify",

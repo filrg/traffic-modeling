@@ -67,9 +67,17 @@ without extending a string-based `if/else` chain.
 stage registry. The main flow is:
 
 ```text
-data -> fit -> evaluate -> scaling/horizon/reconstruct -> export
-  +-------> jobsize -> jobsize_folds --------------------> workload
+data -> fit -> evaluate -> scaling / horizon / reconstruct / export
+  |                 \
+  +-> baselines      +-> workload <- jobsize
+jobsize_folds  (independent rolling-origin validation)
 ```
+
+`python -m seren_countfirst.run_pipeline --plan workload` prints the stable
+stage-level, dependency-first closure without running it. Normal commands may
+omit dependencies when portable state already contains their outputs; if an
+omitted dependency is explicitly listed later in the same command, the CLI
+rejects the unsafe order.
 
 `run_pipeline/stages/baselines.py` is the historical bootstrap-reference stage;
 algorithm baselines live under `baselines/` and are fitted through the regular

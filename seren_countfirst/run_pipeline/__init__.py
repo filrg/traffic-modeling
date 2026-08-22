@@ -19,6 +19,7 @@ from .registry import (
     STAGES,
     ReproductionStep,
     StageSpec,
+    plan_stages,
     stage_baselines,
     stage_certify,
     stage_data,
@@ -31,6 +32,8 @@ from .registry import (
     stage_reconstruct,
     stage_scaling,
     stage_workload,
+    validate_stage_graph,
+    validate_stage_order,
 )
 
 __all__ = [
@@ -56,6 +59,7 @@ __all__ = [
     "STAGES",
     "ReproductionStep",
     "StageSpec",
+    "plan_stages",
     "StateStore",
     "default_context",
     "stage_baselines",
@@ -70,4 +74,6 @@ __all__ = [
     "stage_reconstruct",
     "stage_scaling",
     "stage_workload",
+    "validate_stage_graph",
+    "validate_stage_order",
 ]

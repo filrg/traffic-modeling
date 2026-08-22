@@ -34,7 +34,7 @@ is a pure function of `SEED = 20260729`, so a rebuild in that environment is
 reproducible:
 
 ```bash
-python reproduce.py --quick            # every stage except the three long ones, ~20 min
+python reproduce.py --quick            # skip four long/dependent stages, ~20 min
 python reproduce.py --verify           # full rebuild, then diff it against results/
 ```
 
@@ -52,11 +52,16 @@ python -m seren_countfirst.run_pipeline fit mm4
 
 # score candidates, sweep load, sweep horizon, reconstruct events, export
 python -m seren_countfirst.run_pipeline evaluate scaling horizon reconstruct baselines export
+
+# inspect everything required for a target without executing it
+python -m seren_countfirst.run_pipeline --plan workload
 ```
 
-Every stage is resumable: state persists as npy, csv and json, never pickle.
-Stages after `fit` may be listed together; `fit` takes rung names, so it runs on
-its own.
+Stages can be invoked independently against portable npy/csv/json state. The
+stage-level dependency planner is inspection-only: omitted prerequisites are
+assumed to already exist in that state. When several stages are listed,
+requested dependencies must appear first. `fit` takes model names, so it runs
+on its own.
 
 Generating a workload directly:
 
