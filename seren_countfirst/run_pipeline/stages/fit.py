@@ -7,7 +7,7 @@ import numpy as np
 from ...metrics import acf
 from ...models import IIDNegBin, NBGatedLatent, NBINGARCH, NBLatentAR, ONOFFCounts
 from ...state import PipelineState
-from ..config import LONG_ACF_LAGS, MM4_KNOBS, RUNG_KEYS, SEED
+from ..config import LONG_ACF_LAGS, MM4_KNOBS, RUNG_KEYS
 from ..context import PipelineContext, resolve_context
 
 # state key -> published model name for the gated family
@@ -21,7 +21,7 @@ _GATED_NAMES = {
 }
 
 
-def _fit_one(name: str, state: PipelineState, base_seed: int = SEED):
+def _fit_one(name: str, state: PipelineState, base_seed: int):
     """Fit or calibrate one rung on the trace counts."""
     n = state["counts"].values
     if name == "r2":

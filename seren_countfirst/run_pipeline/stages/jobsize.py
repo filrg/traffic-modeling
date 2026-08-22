@@ -4,6 +4,7 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import replace
+from typing import TypeAlias
 
 import numpy as np
 import pandas as pd
@@ -29,16 +30,15 @@ from ...jobsize import (
     step_time_s,
     write_jobsize_model,
 )
-from ...paths import RESULTS, TRACE_CSV
-from ..config import SEED
+from ..context import PipelineContext, resolve_context
 
 _ECHO_GPUS = (1, 8, 16, 64, 256)
 _N_COMPOSE = 40
 _TAIL_SWEEP = (0.95, 0.98, 0.99, 0.995)
 _N_SWEEP = 10
 
-MarginalModel = LogNormalMixture | ScipyJobSize
-DrawRule = Callable[[np.random.Generator], np.ndarray]
+MarginalModel: TypeAlias = LogNormalMixture | ScipyJobSize
+DrawRule: TypeAlias = Callable[[np.random.Generator], np.ndarray]
 
 
 def _compose(
@@ -62,8 +62,8 @@ def _compose(
     return result
 
 
-def _load_work_units() -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
-    raw = load_trace(TRACE_CSV)
+def _load_work_units(context: PipelineContext) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
+    raw = load_trace(context.trace_csv)
     table = jobsize_table(jobsize_view(raw, "SFT"))
     sizes = table["job_size"].to_numpy()
     error = roundtrip_error_s(table)
@@ -85,15 +85,15 @@ def _load_work_units() -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
     return raw, table, sizes
 
 
-def _fit_marginal(sizes: np.ndarray) -> MarginalModel:
-    board = fit_jobsize(sizes, seed=SEED)
+def _fit_marginal(sizes: np.ndarray, context: PipelineContext) -> MarginalModel:
+    board = fit_jobsize(sizes, seed=context.seed)
     print("\ncandidate laws, best AIC first:")
     print(board.drop(columns="params").round(4).to_string(index=False))
     board.assign(
         params=board["params"].map(
             lambda params: json.dumps(list(params) if isinstance(params, tuple) else params)
         )
-    ).pipe(write_csv, RESULTS / "jobsize_candidates.csv", index=False)
+    ).pipe(write_csv, context.result("jobsize_candidates.csv"), index=False)
 
     best = board.iloc[0]
     model: MarginalModel
@@ -112,7 +112,7 @@ def _fit_marginal(sizes: np.ndarray) -> MarginalModel:
     else:
         model = ScipyJobSize(name=str(best["distribution"]), params=best["params"])
         print(f"\nfrozen law: {best['distribution']} {model.params}")
-    write_jobsize_model(model, RESULTS / "jobsize_model.json")
+    write_jobsize_model(model, context.result("jobsize_model.json"))
     return model
 
 
@@ -121,11 +121,12 @@ def _fit_structure(
     table: pd.DataFrame,
     sizes: np.ndarray,
     marginal: MarginalModel,
+    context: PipelineContext,
 ) -> tuple[pd.DataFrame, pd.DataFrame, ConditionalJobSize]:
     jobs = attach_activity(table, arrival_view(raw, "SFT"))
     batches = batch_frame(jobs)
     log_sizes = np.log(jobs["job_size"].to_numpy())
-    conditional = ConditionalJobSize.fit(jobs, seed=SEED, with_latent=False).freeze()
+    conditional = ConditionalJobSize.fit(jobs, seed=context.seed, with_latent=False).freeze()
     log_variance = float(np.var(log_sizes, ddof=1))
     icc = 1.0 - float(conditional.weights @ conditional.sigma_w**2) / log_variance
     log_activity = np.log(batches["activity"].to_numpy(dtype=float))
@@ -140,7 +141,7 @@ def _fit_structure(
     )
     print(f"activity slope beta {conditional.beta:+.4f}  (R^2 {r_squared:.4f})")
 
-    orders = component_scoreboard(jobs, conditional.beta, seed=SEED)
+    orders = component_scoreboard(jobs, conditional.beta, seed=context.seed)
     print("component counts on the activity-adjusted residuals:")
     print(orders.round(4).to_string(index=False))
     print(f"selected k = {conditional.n_components}")
@@ -156,7 +157,7 @@ def _fit_structure(
             f"  pi {weight:.4f}  m {location:+8.4f}  s_batch {batch_sd:.4f}  "
             f"sigma_w {within_sd:.4f}  (s_job {job_sd:.4f})"
         )
-    write_jobsize_model(conditional, RESULTS / "jobsize_conditional.json")
+    write_jobsize_model(conditional, context.result("jobsize_conditional.json"))
 
     ranked = np.sort(sizes)[::-1]
     analytic_mean = (
@@ -187,7 +188,7 @@ def _fit_structure(
                 **{f"slack_k{int(row.k)}": row.tightest_slack for row in orders.itertuples()},
             }
         ]
-    ).pipe(write_csv, RESULTS / "jobsize_structure.csv", index=False)
+    ).pipe(write_csv, context.result("jobsize_structure.csv"), index=False)
     return jobs, batches, conditional
 
 
@@ -195,8 +196,9 @@ def _fit_two_part(
     jobs: pd.DataFrame,
     batches: pd.DataFrame,
     sizes: np.ndarray,
+    context: PipelineContext,
 ) -> tuple[TwoPartJobSize, np.ndarray, np.ndarray, np.ndarray]:
-    model = TwoPartJobSize.fit(jobs, seed=SEED).freeze()
+    model = TwoPartJobSize.fit(jobs, seed=context.seed).freeze()
     activity = batches["activity"].to_numpy(dtype=float)
     cardinality = batches["cardinality"].to_numpy(dtype=int)
     bin_index = bin_grid_index(batches["bin"])
@@ -225,7 +227,7 @@ def _fit_two_part(
     )
     for count in (2, 20, 200):
         print(f"  weights at N_k = {count:3d}: {np.round(bulk.weights([float(count)])[0], 3)}")
-    write_jobsize_model(model, RESULTS / "jobsize_two_part.json")
+    write_jobsize_model(model, context.result("jobsize_two_part.json"))
     return model, activity, cardinality, bin_index
 
 
@@ -239,21 +241,26 @@ def _composition_checks(
     activity: np.ndarray,
     cardinality: np.ndarray,
     bin_index: np.ndarray,
+    context: PipelineContext,
 ) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     conditional_two_part = TwoPartJobSize.fit(
-        jobs, n_init=4, seed=SEED, bulk_kind="conditional", with_latent=False
+        jobs,
+        n_init=4,
+        seed=context.seed,
+        bulk_kind="conditional",
+        with_latent=False,
     )
     flat = ConditionalJobSize.fit(
         jobs,
         n_components=conditional.n_components,
-        seed=SEED,
+        seed=context.seed,
         beta=0.0,
         with_latent=False,
     )
     unshifted = ConditionalJobSize.fit(
         jobs,
         n_components=conditional.n_components,
-        seed=SEED,
+        seed=context.seed,
         level="log_mean",
         with_latent=False,
     )
@@ -266,7 +273,7 @@ def _composition_checks(
     grouped = jobs.groupby("bin")
     n_jobs_by_bin = grouped.size().to_numpy()
     observed = grouped["job_size"].sum().to_numpy()
-    bin_of_job = np.repeat(batches["bin"].to_numpy(), cardinality)
+    bin_of_job: np.ndarray = np.repeat(batches["bin"].to_numpy(), cardinality)
     rules: dict[str, DrawRule] = {
         "iid_per_job": lambda rng: marginal.rvs(len(jobs), rng),
         "two_part_conditional": lambda rng: conditional_two_part.rvs(
@@ -297,7 +304,7 @@ def _composition_checks(
                 n_jobs_by_bin,
                 sizes,
                 _N_COMPOSE,
-                SEED,
+                context.seed,
             ),
         }
         for name, rule in rules.items()
@@ -305,7 +312,7 @@ def _composition_checks(
     checks = pd.DataFrame(rows)
     print(f"\nwork per occupied bin, {_N_COMPOSE} replicates on the trace's own batches:")
     print(checks.round(4).to_string(index=False))
-    write_csv(checks, RESULTS / "jobsize_conditional_checks.csv", index=False)
+    write_csv(checks, context.result("jobsize_conditional_checks.csv"), index=False)
     return checks, bin_of_job, n_jobs_by_bin
 
 
@@ -317,10 +324,15 @@ def _tail_threshold_sweep(
     bin_index: np.ndarray,
     bin_of_job: np.ndarray,
     n_jobs_by_bin: np.ndarray,
+    context: PipelineContext,
 ) -> pd.DataFrame:
     rows = []
     for quantile in _TAIL_SWEEP:
-        model = TwoPartJobSize.fit(jobs, quantile=quantile, n_init=4, seed=SEED)
+        model = TwoPartJobSize.fit(jobs, quantile=quantile, n_init=4, seed=context.seed)
+
+        def draw(rng: np.random.Generator) -> np.ndarray:
+            return model.rvs(activity, cardinality, bin_index, rng)
+
         rows.append(
             {
                 "quantile": quantile,
@@ -331,30 +343,31 @@ def _tail_threshold_sweep(
                 "rate_a": model.rate_a,
                 "rate_b": model.rate_b,
                 **_compose(
-                    lambda rng, fitted=model: fitted.rvs(activity, cardinality, bin_index, rng),
+                    draw,
                     bin_of_job,
                     n_jobs_by_bin,
                     sizes,
                     _N_SWEEP,
-                    SEED,
+                    context.seed,
                 ),
             }
         )
     sweep = pd.DataFrame(rows)
     print(f"\ntail threshold sweep, {_N_SWEEP} replicates (reported, not selected on):")
     print(sweep.round(4).to_string(index=False))
-    write_csv(sweep, RESULTS / "jobsize_tail_sweep.csv", index=False)
+    write_csv(sweep, context.result("jobsize_tail_sweep.csv"), index=False)
     return sweep
 
 
-def stage_jobsize() -> None:
+def stage_jobsize(context: PipelineContext | None = None) -> None:
     """Fit and export the marginal, structured, and two-part size laws."""
     started = time.time()
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    raw, table, sizes = _load_work_units()
-    marginal = _fit_marginal(sizes)
-    jobs, batches, conditional = _fit_structure(raw, table, sizes, marginal)
-    two_part, activity, cardinality, bin_index = _fit_two_part(jobs, batches, sizes)
+    context = resolve_context(context)
+    context.results.mkdir(parents=True, exist_ok=True)
+    raw, table, sizes = _load_work_units(context)
+    marginal = _fit_marginal(sizes, context)
+    jobs, batches, conditional = _fit_structure(raw, table, sizes, marginal, context)
+    two_part, activity, cardinality, bin_index = _fit_two_part(jobs, batches, sizes, context)
     _, bin_of_job, n_jobs_by_bin = _composition_checks(
         jobs,
         batches,
@@ -365,6 +378,7 @@ def stage_jobsize() -> None:
         activity,
         cardinality,
         bin_index,
+        context,
     )
     _tail_threshold_sweep(
         jobs,
@@ -374,13 +388,14 @@ def stage_jobsize() -> None:
         bin_index,
         bin_of_job,
         n_jobs_by_bin,
+        context,
     )
     pool = EmpiricalJobSize.from_table(table)
-    pool.to_npz(RESULTS / "jobsize_pool.npz")
+    pool.to_npz(context.result("jobsize_pool.npz"))
     print(
         "\nwrote jobsize_candidates.csv, jobsize_model.json, "
         "jobsize_conditional.json, jobsize_two_part.json, jobsize_structure.csv, "
         "jobsize_conditional_checks.csv, jobsize_tail_sweep.csv and a "
-        f"{len(pool.sizes)}-job empirical pool to {RESULTS}"
+        f"{len(pool.sizes)}-job empirical pool to {context.results}"
     )
     print(f"jobsize stage done in {time.time() - started:.0f}s")

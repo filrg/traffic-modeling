@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 
 from . import STAGES
-from .stages.fit import stage_fit
+from .context import PipelineContext
 
 USAGE = """usage: python -m seren_countfirst.run_pipeline <stage> [<stage> ...]
 
@@ -25,11 +25,11 @@ SEREN_RESULTS and SEREN_STATE_DIR.
 """
 
 
-def main(argv: list[str]) -> None:
+def main(argv: list[str], context: PipelineContext | None = None) -> None:
     if not argv or argv[0] not in STAGES:
         raise SystemExit(USAGE)
     if argv[0] == "fit":
-        stage_fit(argv[1:])
+        STAGES["fit"](argv[1:], context)
         return
     unknown = [s for s in argv if s not in STAGES]
     if unknown:
@@ -37,7 +37,7 @@ def main(argv: list[str]) -> None:
     if "fit" in argv[1:]:
         raise SystemExit("`fit` takes rung arguments, so it must be run on its own")
     for name in argv:
-        STAGES[name]([])
+        STAGES[name]([], context)
 
 
 def cli() -> None:

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
+from .context import PipelineContext
 from .stages.baselines import stage_baselines
 from .stages.certify import stage_certify
 from .stages.data import stage_data
@@ -16,7 +18,17 @@ from .stages.reconstruct import stage_reconstruct
 from .stages.scaling import stage_scaling
 from .stages.workload import stage_workload
 
-StageRunner = Callable[[list[str]], None]
+
+class StageRunner(Protocol):
+    def __call__(
+        self,
+        args: list[str],
+        context: PipelineContext | None = None,
+    ) -> None: ...
+
+
+class _ContextStage(Protocol):
+    def __call__(self, context: PipelineContext | None = None) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,18 +45,27 @@ class ReproductionStep:
     skip_in_quick_run: bool = False
 
 
-def _without_args(name: str, function: Callable[[], None]) -> StageRunner:
-    def run(args: list[str]) -> None:
+def _without_args(name: str, function: _ContextStage) -> StageRunner:
+    def run(args: list[str], context: PipelineContext | None = None) -> None:
         if args:
             raise SystemExit(f"stage `{name}` does not accept arguments: {args}")
-        function()
+        function(context)
+
+    return run
+
+
+def _with_args(
+    function: Callable[[list[str], PipelineContext | None], None],
+) -> StageRunner:
+    def run(args: list[str], context: PipelineContext | None = None) -> None:
+        function(args, context)
 
     return run
 
 
 _SPECS = (
     StageSpec("data", _without_args("data", stage_data)),
-    StageSpec("fit", stage_fit, ("data",)),
+    StageSpec("fit", _with_args(stage_fit), ("data",)),
     StageSpec("evaluate", _without_args("evaluate", stage_evaluate), ("data", "fit")),
     StageSpec("scaling", _without_args("scaling", stage_scaling), ("evaluate",)),
     StageSpec("certify", _without_args("certify", stage_certify), ("evaluate",)),
