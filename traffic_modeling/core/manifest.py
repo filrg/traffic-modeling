@@ -133,6 +133,7 @@ _STAGE_EXECUTION_V1_FIELDS = frozenset(
     }
 )
 _STAGE_EXECUTION_V2_FIELDS = _STAGE_EXECUTION_V1_FIELDS | {"outputs"}
+_STAGE_EXECUTION_V3_FIELDS = _STAGE_EXECUTION_V2_FIELDS | {"inputs", "inputs_complete"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +172,8 @@ class StageExecution:
     working_tree_dirty: bool | None = None
     error: str | None = None
     outputs: tuple[ArtifactRecord, ...] = ()
+    inputs: tuple[ArtifactRecord, ...] = ()
+    inputs_complete: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.invocation, StageInvocation):
@@ -195,20 +198,24 @@ class StageExecution:
             raise ValueError("a successful execution cannot contain an error")
         if self.status is StageStatus.FAILED and not self.error:
             raise ValueError("a failed execution must contain an error")
-        if not isinstance(self.outputs, tuple) or any(
-            not isinstance(item, ArtifactRecord) for item in self.outputs
-        ):
-            raise TypeError("outputs must be a tuple of ArtifactRecord values")
-        keys = [(item.scope, item.relative_path) for item in self.outputs]
-        if len(keys) != len(set(keys)):
-            raise ValueError("outputs cannot contain duplicate artifact paths")
+        if not isinstance(self.inputs_complete, bool):
+            raise TypeError("inputs_complete must be a bool")
+        normalized_artifacts = {}
+        for field, records in (("inputs", self.inputs), ("outputs", self.outputs)):
+            if not isinstance(records, tuple) or any(
+                not isinstance(item, ArtifactRecord) for item in records
+            ):
+                raise TypeError(f"{field} must be a tuple of ArtifactRecord values")
+            keys = [(item.scope, item.relative_path) for item in records]
+            if len(keys) != len(set(keys)):
+                raise ValueError(f"{field} cannot contain duplicate artifact paths")
+            normalized_artifacts[field] = tuple(
+                sorted(records, key=lambda item: (item.scope, item.relative_path))
+            )
         object.__setattr__(self, "elapsed_seconds", float(self.elapsed_seconds))
         object.__setattr__(self, "environment", _freeze_mapping(self.environment, "environment"))
-        object.__setattr__(
-            self,
-            "outputs",
-            tuple(sorted(self.outputs, key=lambda item: (item.scope, item.relative_path))),
-        )
+        object.__setattr__(self, "inputs", normalized_artifacts["inputs"])
+        object.__setattr__(self, "outputs", normalized_artifacts["outputs"])
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -217,6 +224,8 @@ class StageExecution:
             "started_utc": self.started_utc,
             "elapsed_seconds": self.elapsed_seconds,
             "environment": _thaw_json(self.environment),
+            "inputs": [item.to_dict() for item in self.inputs],
+            "inputs_complete": self.inputs_complete,
             "outputs": [item.to_dict() for item in self.outputs],
             "code_revision": self.code_revision,
             "working_tree_dirty": self.working_tree_dirty,
@@ -225,18 +234,22 @@ class StageExecution:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> StageExecution:
-        _require_keys(payload, _STAGE_EXECUTION_V2_FIELDS, "StageExecution")
+        _require_keys(payload, _STAGE_EXECUTION_V3_FIELDS, "StageExecution")
         invocation = payload.get("invocation")
         environment = payload.get("environment")
+        inputs = payload.get("inputs")
+        inputs_complete = payload.get("inputs_complete")
         outputs = payload.get("outputs")
         if (
             not isinstance(invocation, Mapping)
             or not isinstance(environment, Mapping)
+            or not isinstance(inputs, list)
+            or not isinstance(inputs_complete, bool)
             or not isinstance(outputs, list)
         ):
             raise ValueError("invalid stage execution")
-        if any(not isinstance(item, Mapping) for item in outputs):
-            raise ValueError("outputs must contain objects")
+        if any(not isinstance(item, Mapping) for item in (*inputs, *outputs)):
+            raise ValueError("inputs and outputs must contain objects")
         status_value = payload.get("status")
         if not isinstance(status_value, str):
             raise ValueError("invalid stage execution status")
@@ -262,6 +275,8 @@ class StageExecution:
             started_utc=_timestamp(payload.get("started_utc"), "started_utc"),
             elapsed_seconds=elapsed_seconds,
             environment=environment,
+            inputs=tuple(ArtifactRecord.from_dict(item) for item in inputs),
+            inputs_complete=inputs_complete,
             outputs=tuple(ArtifactRecord.from_dict(item) for item in outputs),
             code_revision=code_revision,
             working_tree_dirty=working_tree_dirty,
@@ -275,12 +290,12 @@ class RunManifest:
     resolved_config: Mapping[str, object]
     created_utc: str
     executions: tuple[StageExecution, ...] = ()
-    schema_version: int = 2
+    schema_version: int = 3
 
     def __post_init__(self) -> None:
         if not isinstance(self.run_spec, RunSpec):
             raise TypeError("run_spec must be a RunSpec")
-        if isinstance(self.schema_version, bool) or self.schema_version != 2:
+        if isinstance(self.schema_version, bool) or self.schema_version != 3:
             raise ValueError(f"unsupported RunManifest schema version: {self.schema_version}")
         _timestamp(self.created_utc, "created_utc")
         if not isinstance(self.executions, tuple) or any(
@@ -338,25 +353,31 @@ class RunManifest:
         schema_version = payload.get("schema_version")
         if isinstance(schema_version, bool) or not isinstance(schema_version, int):
             raise ValueError("schema_version must be an integer")
-        if schema_version not in {1, 2}:
+        if schema_version not in {1, 2, 3}:
             raise ValueError(f"unsupported RunManifest schema version: {schema_version}")
         normalized_executions: list[Mapping[str, Any]] = []
         for item in executions:
             if not isinstance(item, Mapping):
                 raise ValueError("executions must contain objects")
+            expected = {
+                1: _STAGE_EXECUTION_V1_FIELDS,
+                2: _STAGE_EXECUTION_V2_FIELDS,
+                3: _STAGE_EXECUTION_V3_FIELDS,
+            }[schema_version]
+            _require_keys(item, expected, f"StageExecution v{schema_version}")
+            upgraded = dict(item)
             if schema_version == 1:
-                _require_keys(item, _STAGE_EXECUTION_V1_FIELDS, "StageExecution v1")
-                upgraded = dict(item)
                 upgraded["outputs"] = []
-                normalized_executions.append(upgraded)
-            else:
-                normalized_executions.append(item)
+            if schema_version <= 2:
+                upgraded["inputs"] = []
+                upgraded["inputs_complete"] = False
+            normalized_executions.append(upgraded)
         manifest = cls(
             run_spec=RunSpec.from_dict(run_spec),
             resolved_config=resolved_config,
             created_utc=_timestamp(payload.get("created_utc"), "created_utc"),
             executions=tuple(StageExecution.from_dict(item) for item in normalized_executions),
-            schema_version=2,
+            schema_version=3,
         )
         if payload.get("run_id") != manifest.run_spec.run_id:
             raise ValueError("run_id does not match RunSpec")

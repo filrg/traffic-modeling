@@ -37,6 +37,7 @@ class StageSpec:
     name: str
     run: StageRunner
     depends_on: tuple[str, ...] = ()
+    reads_dataset: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name:
@@ -49,6 +50,8 @@ class StageSpec:
             raise TypeError(f"{self.name}.depends_on must be a tuple of stage names")
         if len(set(self.depends_on)) != len(self.depends_on):
             raise ValueError(f"{self.name} contains duplicate dependencies")
+        if not isinstance(self.reads_dataset, bool):
+            raise TypeError(f"{self.name}.reads_dataset must be a bool")
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,7 +158,7 @@ def _stage_spec_registry(specs: Iterable[StageSpec]) -> Mapping[str, StageSpec]:
 
 
 _SPECS = (
-    StageSpec("data", _without_args("data", stage_data)),
+    StageSpec("data", _without_args("data", stage_data), reads_dataset=True),
     StageSpec("fit", _with_args(stage_fit), ("data",)),
     StageSpec("evaluate", _without_args("evaluate", stage_evaluate), ("data", "fit")),
     StageSpec("scaling", _without_args("scaling", stage_scaling), ("evaluate",)),
@@ -163,8 +166,12 @@ _SPECS = (
     StageSpec("horizon", _without_args("horizon", stage_horizon), ("evaluate",)),
     StageSpec("reconstruct", _without_args("reconstruct", stage_reconstruct), ("evaluate",)),
     StageSpec("baselines", _without_args("baselines", stage_baselines), ("data",)),
-    StageSpec("jobsize", _without_args("jobsize", stage_jobsize)),
-    StageSpec("jobsize_folds", _without_args("jobsize_folds", stage_jobsize_folds)),
+    StageSpec("jobsize", _without_args("jobsize", stage_jobsize), reads_dataset=True),
+    StageSpec(
+        "jobsize_folds",
+        _without_args("jobsize_folds", stage_jobsize_folds),
+        reads_dataset=True,
+    ),
     StageSpec("export", _without_args("export", stage_export), ("evaluate",)),
     StageSpec("workload", _without_args("workload", stage_workload), ("evaluate", "jobsize")),
 )

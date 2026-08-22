@@ -13,7 +13,7 @@ FileStamp: TypeAlias = tuple[int, int, int]
 ArtifactSnapshot: TypeAlias = dict[ArtifactKey, FileStamp]
 
 
-def _roots(context: PipelineContext) -> tuple[tuple[str, Path], ...]:
+def artifact_roots(context: PipelineContext) -> tuple[tuple[str, Path], ...]:
     results = context.results.resolve()
     roots = [("results", results)]
     if isinstance(context.state_store, PortableStateStore):
@@ -30,7 +30,7 @@ def _stamp(path: Path) -> FileStamp:
 
 def _scan(context: PipelineContext) -> dict[ArtifactKey, tuple[Path, FileStamp]]:
     files: dict[ArtifactKey, tuple[Path, FileStamp]] = {}
-    for scope, root in _roots(context):
+    for scope, root in artifact_roots(context):
         if not root.exists():
             continue
         for path in root.rglob("*"):
@@ -48,6 +48,26 @@ def _scan(context: PipelineContext) -> dict[ArtifactKey, tuple[Path, FileStamp]]
 def snapshot_artifacts(context: PipelineContext) -> ArtifactSnapshot:
     """Capture cheap file metadata before a stage runs."""
     return {key: stamp for key, (_, stamp) in _scan(context).items()}
+
+
+def current_artifact(
+    context: PipelineContext,
+    address: ArtifactRecord,
+) -> ArtifactRecord | None:
+    roots = dict(artifact_roots(context))
+    root = roots.get(address.scope)
+    if root is None:
+        return None
+    path = root / address.relative_path
+    if path.is_symlink():
+        raise ValueError(f"artifacts cannot be symbolic links: {path}")
+    if not path.is_file():
+        return None
+    stamp = _stamp(path)
+    digest = sha256_file(path)
+    if _stamp(path) != stamp:
+        raise RuntimeError(f"artifact changed while it was being hashed: {path}")
+    return ArtifactRecord(address.scope, address.relative_path, digest, stamp[0])
 
 
 def changed_artifacts(

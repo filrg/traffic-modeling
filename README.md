@@ -55,20 +55,27 @@ python -m seren_countfirst.run_pipeline evaluate scaling horizon reconstruct bas
 
 # inspect everything required for a target without executing it
 python -m seren_countfirst.run_pipeline --plan workload
+
+# skip only an exact invocation whose full provenance still verifies
+python -m seren_countfirst.run_pipeline --resume evaluate scaling
 ```
 
 Stages can be invoked independently against portable npy/csv/json state. The
 stage-level dependency planner is inspection-only: omitted prerequisites are
 assumed to already exist in that state. When several stages are listed,
 requested dependencies must appear first. `fit` takes model names, so it runs
-on its own.
+on its own. `--resume fit mm4` matches the arguments as well as the stage name.
 
 Executed invocations append a validated `run_manifest.json` under the selected
 results directory. It records the immutable run identity, resolved configuration,
 status, timing, runtime versions, source revision, and every result/state file
-created or rewritten by that invocation with its size and SHA-256. `--plan`
-remains read-only; `reproduce.py` writes its outer timing summary separately as
-`reproduction_report.json`. Input preflight and safe resume are not enabled yet.
+read or rewritten by that invocation with its size and SHA-256. Manifest schema
+v3 records whether dependency input lineage is complete. `--resume` skips only
+when RunSpec/config, exact invocation, clean Git revision, runtime versions, raw
+dataset, dependency inputs and outputs all verify; otherwise it prints the miss
+reason and runs normally. Manifests v1/v2 remain readable but cannot authorize a
+skip. `--plan` remains read-only; `reproduce.py` writes its outer timing summary
+separately as `reproduction_report.json`.
 
 Generating a workload directly:
 

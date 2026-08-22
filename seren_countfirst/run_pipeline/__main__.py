@@ -15,10 +15,12 @@ from ..provenance import runtime_environment, source_revision
 from .artifact_tracking import ArtifactSnapshot, changed_artifacts, snapshot_artifacts
 from .context import PipelineContext, resolve_context
 from .manifest import prepare_manifest, record_execution
+from .preflight import capture_inputs, resume_decision
 from .registry import STAGE_SPECS, plan_stages, validate_stage_order
 
 USAGE = """usage:
     python -m seren_countfirst.run_pipeline <stage> [<stage> ...]
+    python -m seren_countfirst.run_pipeline --resume <stage> [<stage> ...]
     python -m seren_countfirst.run_pipeline --plan <target-stage> [<target-stage> ...]
 
     data                      ingest the trace, verify the audit facts
@@ -36,6 +38,7 @@ USAGE = """usage:
 
 `--plan` prints the stage-level dependency closure without executing any stage;
 it accepts stage names, not `fit` model names.
+`--resume` skips only fully verified invocations; a verification miss runs them.
 Normal stage commands still use existing portable state for omitted dependencies.
 
 Paths come from paths.py. SEREN_TRACE_CSV, SEREN_RESULTS and SEREN_STATE_DIR
@@ -57,13 +60,37 @@ def _print_plan(targets: list[str]) -> None:
         print(f"  {index:>2}. {name:<14} [{kind}; requires: {dependencies}]")
 
 
-def _run_stage(name: str, arguments: list[str], context: PipelineContext) -> None:
+def _run_stage(
+    name: str,
+    arguments: list[str],
+    context: PipelineContext,
+    *,
+    resume: bool = False,
+) -> None:
     invocation = StageInvocation(name, tuple(arguments))
     manifest = prepare_manifest(context)
+    revision, dirty = source_revision()
+    environment = runtime_environment()
+    command = " ".join((name, *arguments))
+    if resume:
+        decision = resume_decision(
+            context,
+            manifest,
+            invocation,
+            code_revision=revision,
+            working_tree_dirty=dirty,
+            environment=environment,
+        )
+        if decision.can_skip:
+            print(f"resume hit: {command} ({decision.reason})")
+            return
+        print(f"resume miss: {command} ({decision.reason}); running")
+    inputs = capture_inputs(context, manifest, STAGE_SPECS[name])
+    if not inputs.complete:
+        print(f"provenance warning: {command} ({'; '.join(inputs.issues)})")
     before: ArtifactSnapshot | None = None
     if manifest is not None:
         before = snapshot_artifacts(context)
-    revision, dirty = source_revision()
     started_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     started = time.perf_counter()
     try:
@@ -81,7 +108,9 @@ def _run_stage(name: str, arguments: list[str], context: PipelineContext) -> Non
             status=StageStatus.FAILED,
             started_utc=started_utc,
             elapsed_seconds=time.perf_counter() - started,
-            environment=runtime_environment(),
+            environment=environment,
+            inputs=inputs.records,
+            inputs_complete=inputs.complete,
             outputs=partial_outputs,
             code_revision=revision,
             working_tree_dirty=dirty,
@@ -99,7 +128,9 @@ def _run_stage(name: str, arguments: list[str], context: PipelineContext) -> Non
             status=StageStatus.SUCCEEDED,
             started_utc=started_utc,
             elapsed_seconds=time.perf_counter() - started,
-            environment=runtime_environment(),
+            environment=environment,
+            inputs=inputs.records,
+            inputs_complete=inputs.complete,
             outputs=outputs,
             code_revision=revision,
             working_tree_dirty=dirty,
@@ -113,11 +144,16 @@ def main(argv: list[str], context: PipelineContext | None = None) -> None:
     if argv[0] == "--plan":
         _print_plan(argv[1:])
         return
+    resume = argv[0] == "--resume"
+    if resume:
+        argv = argv[1:]
+        if not argv:
+            raise SystemExit(USAGE)
     if argv[0] not in STAGE_SPECS:
         raise SystemExit(USAGE)
     runtime = resolve_context(context)
     if argv[0] == "fit":
-        _run_stage("fit", argv[1:], runtime)
+        _run_stage("fit", argv[1:], runtime, resume=resume)
         return
     unknown = [s for s in argv if s not in STAGE_SPECS]
     if unknown:
@@ -129,7 +165,7 @@ def main(argv: list[str], context: PipelineContext | None = None) -> None:
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     for name in argv:
-        _run_stage(name, [], runtime)
+        _run_stage(name, [], runtime, resume=resume)
 
 
 def cli() -> None:

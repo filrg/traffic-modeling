@@ -88,9 +88,10 @@ Scientific calculations stay in domain modules. Stage modules load inputs, call
 those calculations and write artifacts through an injected `PipelineContext`.
 The orchestration boundary records each stage invocation in `run_manifest.json`;
 `fit mm4` and `fit r2` are distinct records. Each successful or failed record
-also catalogs result/state files created or rewritten by that invocation, using
-portable relative paths, sizes and SHA-256 digests. This is provenance, not safe
-resume: inputs and dependency artifacts are not preflighted before execution.
+also catalogs input and output artifacts using portable relative paths, sizes
+and SHA-256 digests. `--resume` verifies this lineage together with run identity,
+source, runtime and raw dataset before skipping an exact invocation. A miss is a
+normal rerun, never an optimistic reuse.
 
 The default CLI still writes the published compatibility `results/` tree. Set
 `SEREN_RUNS_DIR` to opt into isolated storage derived from the complete

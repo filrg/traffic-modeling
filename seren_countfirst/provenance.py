@@ -36,7 +36,7 @@ def runtime_environment() -> dict[str, str]:
 
 
 def source_revision(root: Path | None = None) -> tuple[str | None, bool | None]:
-    """Return the Git revision and tracked-worktree status when Git metadata is available."""
+    """Return the Git revision and relevant source-worktree status when available."""
     repository = (root or Path(__file__).resolve().parent.parent).resolve()
     prefix = ["git", "-c", f"safe.directory={repository.as_posix()}"]
 
@@ -55,6 +55,15 @@ def source_revision(root: Path | None = None) -> tuple[str | None, bool | None]:
     revision = run("rev-parse", "HEAD")
     if revision is None or revision.returncode:
         return None, None
-    status = run("status", "--porcelain", "--untracked-files=no")
+    status = run(
+        "status",
+        "--porcelain",
+        "--untracked-files=normal",
+        "--",
+        "traffic_modeling",
+        "seren_countfirst",
+        "reproduce.py",
+        "pyproject.toml",
+    )
     dirty = None if status is None or status.returncode else bool(status.stdout.strip())
     return revision.stdout.strip(), dirty
