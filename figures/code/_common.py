@@ -1,10 +1,9 @@
-"""House style, state loading and the view-selection CLI shared by every figure."""
 from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
-from typing import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 
 import matplotlib as mpl
 import numpy as np
@@ -16,15 +15,16 @@ from matplotlib.lines import Line2D  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from seren_countfirst.paths import RESULTS, STATE_DIR  # noqa: E402,F401
-from seren_countfirst.tools.migrate_state import (  # noqa: E402
-    load_portable_state,
-    rebuild_model,
-)
+from seren_countfirst.ensemble import (  # noqa: E402,F401
+    DISPLAY_CANDIDATES, DISPLAY_OFFSET, PEAK_Q, SEED, BINS_PER_DAY, calibrated,
+    closest_to_trace, daily_peaks, display_pool, redraw, representative, state,
+    winner)
 
-SEED = 20260729
+# set by `run` from --error-bars / --no-error-bars; None leaves each view on its
+# own default. The csv twin always holds the bounds whether or not they are drawn.
+SHOW_CI: bool | None = None
 BIN_H = 0.25
 BINS_PER_H = 4
-BINS_PER_DAY = 96
 
 # this file lives in figures/code; outputs are sorted into pdf/ png/ csv/
 OUT = Path(__file__).resolve().parents[1]
@@ -33,20 +33,49 @@ INK, INK_2, MUTED = "#0b0b0b", "#52514e", "#898781"
 GRID, AXIS, BAND = "#e1e0d9", "#c3c2b7", "#e8e7e2"
 BLUE = "#2a78d6"
 
-# black solid is the measurement, coloured dash is a model. Hue alone carries
-# identity: the four slots clear all-pairs CVD dE 9.2 (target 8) and
-# normal-vision 16.3 (floor 15) against white paper, so no dash relief is owed.
+# black solid is the measurement, coloured dash is a model; hue alone carries identity
 MODEL_DASH = (0, (5, 1.6))
 
-# categorical slots 1-3 plus violet. Violet is slot 7, not slot 4: as a fourth,
-# yellow / magenta / red fail the normal-vision floor of 15 (13.7 / 12.9 / 7.1)
-# and green fails CVD at 3.2.
+# revalidate the palette for colour-vision and print contrast before adding a series
 SERIES = [
     ("gated_mm4", "GLI-NB", "#2a78d6"),
     ("gated_nogate", "LI-NB", "#eb6834"),
     ("onoff", "ON/OFF", "#1baf7a"),
     ("ingarch", "NB-INGARCH", "#4a3aa7"),
 ]
+
+
+# artifact key -> (path, the pipeline stage that writes it). The only place a
+# figure input path is written down; a module names keys, never paths.
+ARTIFACTS = {
+    "state": (STATE_DIR / "meta.json", "data"),
+    "counts": (STATE_DIR / "counts.npy", "data"),
+    "models": (STATE_DIR / "models.json", "fit"),
+    "batch_times": (STATE_DIR / "batch_times.csv", "data"),
+    "jobsize_model": (RESULTS / "jobsize_model.json", "jobsize"),
+    "jobsize_pool": (RESULTS / "jobsize_pool.npz", "jobsize"),
+    "jobsize_candidates": (RESULTS / "jobsize_candidates.csv", "jobsize"),
+    "jobsize_conditional": (RESULTS / "jobsize_conditional.json", "jobsize"),
+    "jobsize_two_part": (RESULTS / "jobsize_two_part.json", "jobsize"),
+}
+
+
+def check_inputs(keys) -> bool:
+    """Print ok / MISSING for each artifact, naming the stage that writes it."""
+    ok = True
+    for key in keys:
+        path, stage = ARTIFACTS[key]
+        here = path.exists()
+        ok &= here
+        mark = "ok     " if here else "MISSING"
+        note = "" if here else f"   <- run `run_pipeline {stage}`"
+        print(f"  {mark} {key:20s} {path}{note}")
+    return ok
+
+
+def show_ci(default: bool) -> bool:
+    """Whether to draw a measurement's interval; the flag overrides the view's default."""
+    return default if SHOW_CI is None else SHOW_CI
 
 
 def house_style() -> None:
@@ -94,9 +123,8 @@ def stroke_legend(ax, entries, loc, fontsize: float = 6.5, labelspacing: float =
                   handlelength: float = 2.6, borderpad: float = 0.45):
     """Draw a legend whose handles are bare strokes matching each curve's style.
 
-    Handles are proxies, not the artists: a 4pt marker centred in the default
-    19pt handle covers most of a 6.6pt dash period, rendering every entry as a
-    solid stroke. The handle is lengthened to fit two full dash periods.
+    The handles are proxies rather than the plotted artists, and are lengthened
+    to hold two full dash periods.
     """
     handles = [Line2D([], [], color=c, linewidth=lw, linestyle=ls) for _, c, lw, ls in entries]
     return frame_legend(ax.legend(
@@ -128,22 +156,6 @@ def write_csv(df: pd.DataFrame, name: str, index: bool = True) -> None:
     df.to_csv(OUT / "csv" / f"{name}.csv", index=index)
 
 
-def state() -> dict:
-    """Load the portable pipeline state."""
-    return load_portable_state(STATE_DIR)
-
-
-def calibrated(st: dict, key: str) -> tuple:
-    """Return (model, alpha) for one state key, with the global rate calibration."""
-    m = rebuild_model(st["models_json"][key])
-    return m, st["trace_marginals"]["mean"] / float(m.params_["mean"])
-
-
-def winner(st: dict) -> tuple:
-    """Return (model, alpha) for the frozen winner."""
-    return calibrated(st, st["winner"])
-
-
 def series_paths(st: dict, n_paths: int, seed_offset: int = 1) -> dict:
     """Simulate `n_paths` at trace length for each model in `SERIES`.
 
@@ -159,21 +171,28 @@ def series_paths(st: dict, n_paths: int, seed_offset: int = 1) -> dict:
     return out
 
 
-def daily_peaks(counts: np.ndarray) -> np.ndarray:
-    """Return the largest bin in each whole day; a trailing partial day is dropped."""
-    x = np.asarray(counts, dtype=float)
-    n_days = len(x) // BINS_PER_DAY
-    return x[: n_days * BINS_PER_DAY].reshape(n_days, BINS_PER_DAY).max(axis=1)
-
-
-def run(views: Mapping[str, Callable[[], None]], default: str, description: str) -> None:
-    """Parse `--style` / `--all` / `--list` and run the selected views."""
+def run(views: Mapping[str, Callable[[], None]], default: str, description: str,
+        inputs: Sequence[str] = ()) -> None:
+    """Parse `--style` / `--all` / `--list` / `--check` and run the selected views."""
     ap = argparse.ArgumentParser(description=description)
     ap.add_argument("--style", choices=list(views), default=default,
                     help=f"which view to render (default: {default})")
     ap.add_argument("--all", action="store_true", help="render every view")
     ap.add_argument("--list", action="store_true", help="list the views and exit")
+    ap.add_argument("--check", action="store_true",
+                    help="report whether this module's inputs exist, and exit")
+    ap.add_argument("--error-bars", dest="error_bars", action="store_true", default=None,
+                    help="draw the measurement's confidence intervals in every view "
+                         "that has them, overriding the view's own default")
+    ap.add_argument("--no-error-bars", dest="error_bars", action="store_false",
+                    help="hide them in every view, likewise")
     args = ap.parse_args()
+
+    global SHOW_CI
+    SHOW_CI = args.error_bars
+
+    if args.check:
+        raise SystemExit(0 if check_inputs(inputs) else 1)
 
     if args.list:
         for name, fn in views.items():

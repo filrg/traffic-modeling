@@ -1,4 +1,3 @@
-"""Staged, resumable driver for the count-first pipeline."""
 from .config import (
     AUDIT,
     CERTIFY_SEEDS,

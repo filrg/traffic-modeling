@@ -1,7 +1,6 @@
-"""Parameter recovery, testing the estimator rather than the metrics."""
 from __future__ import annotations
 
-from typing import Callable, List, Sequence
+from collections.abc import Callable, Sequence
 
 import numpy as np
 import pandas as pd
@@ -21,7 +20,7 @@ def parameter_recovery(
 
     Targets the kappa versus fast-latent-variance confound in particular.
     """
-    rows: List[dict] = []
+    rows: list[dict] = []
     for rep in range(n_replicates):
         rng = np.random.default_rng(seed + rep)
         synthetic = truth_model.simulate(n_bins, rng)

@@ -1,7 +1,6 @@
-"""Flexible-horizon evaluation of extensive statistics."""
 from __future__ import annotations
 
-from typing import List, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -27,15 +26,17 @@ def horizon_distribution(
     windows of equal duration, so the caller must match trace windows to the
     same horizon.
     """
-    rows: List[dict] = []
+    rows: list[dict] = []
     for days in horizon_days:
         n_bins = int(days * bins_per_day)
         rng = np.random.default_rng(seed + days)
         stats = []
         for _ in range(n_paths):
             path = model.simulate(n_bins, rng, alpha=alpha, **sim_kwargs)
-            hourly = path[: (len(path) // 4) * 4].reshape(-1, 4).sum(axis=1) if n_bins >= 4 else path
-            daily = path[: (len(path) // 96) * 96].reshape(-1, 96).sum(axis=1) if n_bins >= 96 else path
+            hourly = path[: (len(path) // 4) * 4].reshape(-1,
+                             4).sum(axis=1) if n_bins >= 4 else path
+            daily = path[: (len(path) // 96) * 96].reshape(-1,
+                            96).sum(axis=1) if n_bins >= 96 else path
             ep = episode_stats(path, busy_threshold)
             stats.append(
                 {

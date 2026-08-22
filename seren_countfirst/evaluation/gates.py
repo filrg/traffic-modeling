@@ -1,8 +1,7 @@
-"""Sequential structural gates; a weighted score only ranks candidates that passed."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence, Tuple
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -21,14 +20,14 @@ class GateResult:
 
 @dataclass
 class GateReport:
-    results: List[GateResult] = field(default_factory=list)
+    results: list[GateResult] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
         return all(g.passed for g in self.results)
 
     @property
-    def first_failure(self) -> Optional[GateResult]:
+    def first_failure(self) -> GateResult | None:
         for g in self.results:
             if not g.passed:
                 return g
@@ -42,28 +41,28 @@ class GateReport:
 class GateEvidence:
     """Evidence and tolerances the gates need beyond one metric comparison.
 
-    Missing evidence fails its gate rather than passing it. `idc_envelope` is
-    the exception: gate 3 falls back to the single shared envelope when none is
-    given, preserving the behaviour of older callers.
+    Missing evidence fails its gate rather than passing it. `idc_envelope` is the
+    exception: gate 3 falls back to the single shared envelope when none is given.
 
     The tolerances are declared requirements, not fitted quantities.
-    `alpha_range` is the load range the model card claims; `idc_drift_tol`
-    bounds second-order distortion across that range.
+    `alpha_range` is the load range the model card claims; `idc_drift_tol` bounds
+    second-order distortion across that range.
     """
 
-    idc_envelope: Optional[pd.DataFrame] = None
-    fold_evidence: Optional[pd.DataFrame] = None
-    scaling: Optional[pd.DataFrame] = None
+    idc_envelope: pd.DataFrame | None = None
+    fold_evidence: pd.DataFrame | None = None
+    scaling: pd.DataFrame | None = None
     min_folds: int = 2
     kappa_rule: str = "proportional"
-    alpha_range: Tuple[float, float] = (0.5, 2.0)
+    alpha_range: tuple[float, float] = (0.5, 2.0)
     idc_drift_tol: float = 1.0
     acf_drift_tol: float = 0.10
     rate_z_tol: float = 3.0
     collision_tol: float = 1e-3
 
 
-def fold_stability_gate(evidence: GateEvidence, z_tol: float = 3.0) -> Tuple[bool, str, float, float]:
+def fold_stability_gate(evidence: GateEvidence,
+                        z_tol: float = 3.0) -> tuple[bool, str, float, float]:
     """Grade gate 7: no validation window is reproduced materially worse than the rest."""
     ev = evidence.fold_evidence
     if ev is None or len(ev) == 0:
@@ -80,15 +79,12 @@ def fold_stability_gate(evidence: GateEvidence, z_tol: float = 3.0) -> Tuple[boo
     return z <= z_tol, detail, z, z_tol
 
 
-def scaling_drift_gate(evidence: GateEvidence) -> Tuple[bool, str, float, float]:
+def scaling_drift_gate(evidence: GateEvidence) -> tuple[bool, str, float, float]:
     """Grade gate 8: load scaling stays linear in rate and bounded in second-order drift.
 
-    Rate linearity is judged against the report's own Monte Carlo error, since
-    a raw relative error at high alpha is dominated by path spread. IDC/ACF
-    drift and collision risk are judged inside `alpha_range` only: drift is
-    expected once the latent dominates, so drift outside the declared operating
-    range is a documented property rather than a failure. The detail string
-    reports the full sweep regardless.
+    Rate linearity is judged against the report's own Monte Carlo error. IDC/ACF
+    drift and collision risk are judged inside `alpha_range` only; the detail
+    string reports the full sweep regardless.
     """
     rep = evidence.scaling
     if rep is None or len(rep) == 0:
@@ -104,7 +100,7 @@ def scaling_drift_gate(evidence: GateEvidence) -> Tuple[bool, str, float, float]
     if band.empty:
         return False, f"no alpha in the operating range [{lo}, {hi}]", np.nan, 1.0
 
-    checks: List[tuple] = []
+    checks: list[tuple] = []
     se = sub["sd_total"].to_numpy(dtype=float) / np.sqrt(sub["n_paths"].to_numpy(dtype=float))
     z_rate = np.abs(sub["mean_total"].to_numpy(dtype=float) - sub["expected_total"].to_numpy(dtype=float))
     z_rate = z_rate / np.maximum(se, 1e-12)
@@ -147,7 +143,7 @@ def evaluate_gates(
     z_tol: float = 3.0,
     rate_tol: float = 0.05,
     stop_at_first_failure: bool = True,
-    evidence: Optional[GateEvidence] = None,
+    evidence: GateEvidence | None = None,
 ) -> GateReport:
     """Run gates 1-8 in order; the scalar rate calibration unlocks only after all pass.
 
@@ -176,7 +172,8 @@ def evaluate_gates(
     means = np.array([p.mean() for p in syn])
     se = envelope.loc["mean", "se"] if "mean" in envelope.index else np.nan
     z = abs(means.mean() - trace_metrics["mean"]) / max(se, 1e-12)
-    ok = add("2_realised_rate_distribution", z <= z_tol, f"Z = {z:.2f} against bootstrap SE", z, z_tol)
+    ok = add("2_realised_rate_distribution", z <= z_tol,
+             f"Z = {z:.2f} against bootstrap SE", z, z_tol)
     if not ok and stop_at_first_failure:
         return report
 
@@ -194,7 +191,8 @@ def evaluate_gates(
                   if m in envelope.index]
         note = " (single shared envelope)"
     frac = float(np.mean(inside)) if inside else 0.0
-    ok = add("3_idc_envelope", frac >= 0.6, f"{frac:.0%} of {len(inside)} scales inside envelope{note}",
+    ok = add("3_idc_envelope", frac >= 0.6,
+             f"{frac:.0%} of {len(inside)} scales inside envelope{note}",
              frac, 0.6)
     if not ok and stop_at_first_failure:
         return report
@@ -212,14 +210,16 @@ def evaluate_gates(
     # 5 episodes and tails
     ep_rows = [m for m in zt.index if m.startswith(("busy_", "quiet_", "roll", "zero_bin"))]
     worst_ep = float(zt.loc[ep_rows, "Z"].max()) if ep_rows else np.nan
-    ok = add("5_episodes_and_tails", worst_ep <= z_tol, f"worst episode/tail Z {worst_ep:.2f}", worst_ep, z_tol)
+    ok = add("5_episodes_and_tails", worst_ep <= z_tol,
+             f"worst episode/tail Z {worst_ep:.2f}", worst_ep, z_tol)
     if not ok and stop_at_first_failure:
         return report
 
     # 6 spectrum and horizon totals
     wv_rows = [m for m in zt.index if m.startswith("wv_level")]
     worst_wv = float(zt.loc[wv_rows, "Z"].max()) if wv_rows else np.nan
-    ok = add("6_spectrum_and_totals", worst_wv <= 2 * z_tol, f"worst wavelet-variance Z {worst_wv:.2f}",
+    ok = add("6_spectrum_and_totals", worst_wv <= 2 * z_tol,
+             f"worst wavelet-variance Z {worst_wv:.2f}",
              worst_wv, 2 * z_tol)
     if not ok and stop_at_first_failure:
         return report

@@ -1,19 +1,18 @@
-"""Horizon distributions and their scale support."""
 from __future__ import annotations
 
 
 import pandas as pd
 
-from ... import horizon_distribution, scale_support
+from ...evaluation import horizon_distribution, scale_support
 from ...paths import RESULTS
 from ..config import N_PATHS_HORIZON, SEED
-from ..state import _load, _models, _save
+from ..state import fitted_models, load_state, save_state
 
 
 def stage_horizon() -> None:
-    state = _load()
+    state = load_state()
     RESULTS.mkdir(parents=True, exist_ok=True)
-    model = _models(state)[state.get("winner", "gated_mm")]
+    model = fitted_models(state)[state.get("winner", "gated_mm")]
     hz = horizon_distribution(model, n_paths=N_PATHS_HORIZON,
                               busy_threshold=state["busy_threshold"], seed=SEED)
     # a horizon holding fewer than 8 aggregation windows cannot support a
@@ -29,4 +28,4 @@ def stage_horizon() -> None:
     print(support.pivot(index="horizon_days", columns="scale", values="reportable").to_string())
     state["horizon"] = hz
     state["horizon_scale_support"] = support
-    _save(state)
+    save_state(state)

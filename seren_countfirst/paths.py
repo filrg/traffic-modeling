@@ -1,4 +1,3 @@
-"""Filesystem locations, resolved relative to the repository and env-overridable."""
 from __future__ import annotations
 
 import os

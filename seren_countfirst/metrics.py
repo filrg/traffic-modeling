@@ -1,7 +1,6 @@
-"""Standard metric set and discrepancy definitions, all on base-resolution counts."""
 from __future__ import annotations
 
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -133,7 +132,8 @@ def quiet_run_vs_geometric(counts: np.ndarray) -> pd.Series:
     )
 
 
-def rolling_tails(x: np.ndarray, window: int, quantiles: Sequence[float] = (0.95, 0.99)) -> pd.Series:
+def rolling_tails(x: np.ndarray, window: int,
+                  quantiles: Sequence[float] = (0.95, 0.99)) -> pd.Series:
     """Return upper quantiles and the maximum of a rolling window sum."""
     x = np.asarray(x, dtype=float)
     if len(x) < window:
@@ -161,7 +161,8 @@ def wavelet_variance(x: np.ndarray, n_levels: int = 8) -> pd.Series:
     return pd.Series(out)
 
 
-def microstructure(job_times_s: np.ndarray, batch_times_s: np.ndarray, counts: np.ndarray) -> pd.Series:
+def microstructure(job_times_s: np.ndarray, batch_times_s: np.ndarray,
+                   counts: np.ndarray) -> pd.Series:
     """Return event-reconstruction fidelity: zero-IAT, positive gaps, empty bins."""
     job_times_s = np.sort(np.asarray(job_times_s, dtype=float))
     batch_times_s = np.sort(np.asarray(batch_times_s, dtype=float))
@@ -261,7 +262,8 @@ def z_table(
                 "trace": float(trace_metrics[name]),
                 "synthetic": float(syn_metrics[name]),
                 "boot_se": se,
-                "Z": z_score(float(syn_metrics[name]), float(trace_metrics[name]), se if np.isfinite(se) else eps, eps),
+                "Z": z_score(float(syn_metrics[name]), float(trace_metrics[name]),
+                             se if np.isfinite(se) else eps, eps),
             }
         )
     return pd.DataFrame(rows).set_index("metric")

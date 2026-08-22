@@ -1,8 +1,7 @@
-"""The model interface every rung implements, and its fit report."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -25,7 +24,8 @@ class CalendarTerm:
         return np.column_stack(cols)
 
     @classmethod
-    def fit(cls, counts: np.ndarray, hour_of_week: np.ndarray, n_harmonics: int = 3, kappa: float = 1.0,
+    def fit(cls, counts: np.ndarray, hour_of_week: np.ndarray, n_harmonics: int = 3,
+            kappa: float = 1.0,
             max_iter: int = 100) -> "CalendarTerm":
         X = cls.design(hour_of_week, n_harmonics)
         beta = np.zeros(X.shape[1])
@@ -60,7 +60,7 @@ class FitReport:
     loglik: float
     n_params: int
     n_obs: int
-    boundary_warnings: List[str] = field(default_factory=list)
+    boundary_warnings: list[str] = field(default_factory=list)
     restarts: int = 1
 
     @property
@@ -95,8 +95,8 @@ class CountModel:
     role = "candidate"
 
     def __init__(self) -> None:
-        self.report: Optional[FitReport] = None
-        self.params_: Dict[str, Any] = {}
+        self.report: FitReport | None = None
+        self.params_: dict[str, Any] = {}
         self._frozen = False
 
     def fit(self, counts: np.ndarray, **kwargs) -> "CountModel":  # pragma: no cover

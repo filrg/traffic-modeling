@@ -1,34 +1,33 @@
-"""Load-scaling sweep and the full gate diagnostic."""
 from __future__ import annotations
 
 
 import numpy as np
 import pandas as pd
 
-from ... import expanding_window_folds, scaling_report
+from ...data import expanding_window_folds
+from ...scaling import scaling_report
 from ...evaluation import GateEvidence, evaluate_gates, evaluate_on_folds
 from ...paths import RESULTS
 from ..config import FOLD_KWARGS, N_PATHS_EVAL, N_PATHS_FOLD, N_PATHS_SCALING, SEED
-from ..state import _load, _models, _save
+from ..state import fitted_models, load_state, save_state
 
 
 def stage_scaling() -> None:
-    state = _load()
+    state = load_state()
     RESULTS.mkdir(parents=True, exist_ok=True)
     name = state.get("winner", "gated_mm")
-    model = _models(state)[name]
+    model = fitted_models(state)[name]
     rep = scaling_report(model, state["n_bins"], n_paths=N_PATHS_SCALING,
-                         busy_threshold=state["busy_threshold"], seed=SEED)
+                         seed=SEED)
     rep.to_csv(RESULTS / "scaling_report.csv", index=False)
     # gate 8 grades the *_mean columns; the single-path ones are kept for
-    # continuity but are too noisy to read, showing drift at alpha = 1 where it
-    # is zero by construction
+    # continuity but are too noisy to read
     cols = ["kappa_rule", "alpha", "rate_error_vs_theory", "IDC_15m",
             "IDC_15m_drift_log_mean", "IDC_1d_drift_log_mean", "ACF_lag1_drift_mean",
             "p_exceed_slots", "max_fill_ratio"]
     print(rep[cols].round(4).to_string(index=False))
     state["scaling"] = rep
-    _save(state)
+    save_state(state)
     _full_gate_diagnostic(state, name, model, rep)
 
 

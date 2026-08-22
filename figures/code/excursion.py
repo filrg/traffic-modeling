@@ -1,52 +1,46 @@
-"""F4 excursion structure: how big the bursts get, and how often they happen.
-
-Five views of one ensemble. The daily-peak claim has four of them because no
-single treatment carries both ends at once: the quantile curve is complete but
-has to be read off a curve, the range bars put both ends at a glance, the band
-bars give frequencies a reader can quote, and the strips show the raw alternation
-with no statistic in between. `burst-rate` is the same question asked per bin
-rather than per day.
-"""
 from __future__ import annotations
+
+import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from matplotlib.patches import Patch
 from matplotlib.ticker import FuncFormatter
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C
 from _common import plt
 
-N_PATHS = 60
+N_PATHS = C.DISPLAY_CANDIDATES
 DAYS_PER_WEEK = 7.0
 
-# 138 whole days, so the finest resolvable quantile is about 1/138. The grid
-# stops at 0.99 and is rounded, so REPORT_Q indexes it without float equality.
+# rounded, so `REPORT_Q` indexes the grid without comparing floats for equality
 Q = np.round(np.linspace(0.01, 0.99, 99), 2)
 REPORT_Q = [0.1, 0.25, 0.5, 0.75, 0.9, 0.99]
-# quiet end, typical day, busy day. The bar spans TYP..BUSY; LOW is the whisker.
+# quiet end, typical day, busy day; the bar spans TYP..BUSY and LOW is the whisker
 Q_LOW, Q_TYP, Q_BUSY = 0.10, 0.50, 0.90
-# the quantiles a path is judged typical on
-Q_SEL = np.array([0.1, 0.25, 0.5, 0.75, 0.9, 0.99])
 
-# disjoint bands over the whole daily range, splitting at the frozen busy
-# threshold of 25 and then at the per-bin edges, so the two panels cut alike
+# disjoint bands over the daily range, split at the frozen busy threshold
 DAY_EDGES = [0, 25, 100, 200, np.inf]
 DAY_LABELS = ["<25", "25-100", "100-200", "200+"]
 BIN_EDGES = [25, 50, 100, 200, np.inf]
 BIN_LABELS = ["25-50", "50-100", "100-200", "200+"]
-# the band whose bars are too short to read off the axis, so they get labels
+# the band whose bars carry value labels
 LABELLED_BAND = "200+"
 
 _CACHE: dict = {}
 
 
 def _ensemble() -> tuple:
-    """Return (trace counts, {label: 60 paths}), simulated once and reused."""
+    """Return (trace counts, {label: N_PATHS paths}), simulated once and reused.
+
+    Drawn at `DISPLAY_OFFSET`, so the winner's run is the one `arrivals.series` shows.
+    """
     if not _CACHE:
         st = C.state()
         _CACHE["counts"] = st["counts"].values
-        _CACHE["paths"] = C.series_paths(st, N_PATHS)
+        _CACHE["paths"] = C.series_paths(st, N_PATHS, seed_offset=C.DISPLAY_OFFSET)
     return _CACHE["counts"], _CACHE["paths"]
 
 
@@ -75,7 +69,7 @@ def _bar_panel(df: pd.DataFrame, labels, xlabel: str, ylabel: str, name: str,
     fig, ax = plt.subplots(figsize=figsize)
     entries = [("Trace", C.INK)] + [(label, color) for _, label, color in C.SERIES]
     x = np.arange(len(labels), dtype=float)
-    # a 2px gap between adjacent bars, so groups read as groups
+    # gap between adjacent bars, in points
     width = 0.84 / len(entries)
     for i, (label, color) in enumerate(entries):
         offset = (i - (len(entries) - 1) / 2) * width
@@ -149,7 +143,7 @@ def daily_peak_range() -> None:
     qs = [Q_LOW, Q_TYP, Q_BUSY]
     rows = {"Trace": np.quantile(C.daily_peaks(counts), qs)}
     for label, runs in paths.items():
-        # median across paths of the per-path quantile, as in the quantile view
+        # median across paths of the per-path quantile
         rows[label] = np.median(np.array([np.quantile(C.daily_peaks(p), qs) for p in runs]),
                                 axis=0)
     df = pd.DataFrame(rows, index=["quiet_day_p10", "typical_day_p50", "busy_day_p90"]).T
@@ -159,8 +153,7 @@ def daily_peak_range() -> None:
     rows_ord = [("Trace", C.INK)] + [(label, color) for _, label, color in C.SERIES]
     ys = list(range(len(rows_ord) - 1, -1, -1))  # trace on top, reading order
 
-    # the trace's two values repeated on every row, so a miss reads as a
-    # horizontal distance
+    # the trace's two values repeated on every row
     for q in ("typical_day_p50", "busy_day_p90"):
         ax.axvline(float(df.loc["Trace", q]), color=C.AXIS, linewidth=0.7,
                    linestyle=(0, (1, 2.2)), zorder=1)
@@ -177,12 +170,11 @@ def daily_peak_range() -> None:
         for x in (typ, busy):
             ax.annotate(f"{x:.0f}", (x, y), textcoords="offset points", xytext=(0, -8.5),
                         ha="center", va="center", fontsize=6.5, color=C.INK_2, zorder=4)
-        # names sit above their bars, not on ticks: a label column would eat
-        # width the bars need at 3.5 in
+        # names sit above their bars rather than on ticks, to save panel width
         ax.annotate(label, (2.0, y + 0.34), ha="left", va="center",
                     fontsize=7, color=color, zorder=4)
 
-    # labelled once over the guide lines; the caption defines them
+    # labelled once, over the guide lines
     ax.annotate("typical day", (float(df.loc["Trace", "typical_day_p50"]), ys[0] + 0.88),
                 ha="left", va="center", fontsize=6.5, color=C.MUTED)
     ax.annotate("busy day", (float(df.loc["Trace", "busy_day_p90"]), ys[0] + 0.88),
@@ -230,14 +222,9 @@ def daily_peak_strips() -> None:
     counts, paths = _ensemble()
     strips = {"Trace": C.daily_peaks(counts)}
     for label, runs in paths.items():
-        peaks = np.array([C.daily_peaks(p) for p in runs])
-        curves = np.quantile(peaks, Q_SEL, axis=1).T          # (path, quantile)
-        med = np.median(curves, axis=0)
-        # distance is the summed absolute log-ratio, shifted by one so a
-        # quiet-day quantile of zero stays finite; the reference is the model's
-        # own median curve, never the trace
-        strips[label] = peaks[int(np.argmin(
-            np.abs(np.log((curves + 1.0) / (med + 1.0))).sum(axis=1)))]
+        pick = C.representative(runs, float(counts.mean()))
+        strips[label] = C.daily_peaks(runs[pick])
+        print(f"{label:11s} strip: run {pick} of {N_PATHS}")
     df = pd.DataFrame(strips, index=pd.RangeIndex(1, len(strips["Trace"]) + 1, name="day"))
 
     C.house_style()
@@ -259,8 +246,7 @@ def daily_peak_strips() -> None:
     axes[-1].set_xlim(0, day[-1])
     axes[-1].set_xlabel("Time (days)")
     axes[-1].xaxis.label.set_color(C.INK)
-    # the label goes on the middle strip, so tight_layout accounts for it and
-    # the stack keeps one shared y axis
+    # the label goes on the middle strip, so `tight_layout` accounts for it
     axes[len(rows) // 2].set_ylabel("Batches in the day's busiest 15 min", fontsize=8)
     axes[len(rows) // 2].yaxis.label.set_color(C.INK)
 
@@ -294,6 +280,8 @@ def burst_rate() -> None:
     print(df.round(2).to_string())
 
 
+INPUTS = ("state", "counts", "models")
+
 VIEWS = {
     "daily-peak": daily_peak,
     "daily-peak-range": daily_peak_range,
@@ -303,4 +291,6 @@ VIEWS = {
 }
 
 if __name__ == "__main__":
-    C.run(VIEWS, "daily-peak", __doc__)
+    C.run(VIEWS, "daily-peak",
+          "Excursion structure: how big the bursts get, and how often they happen.",
+          INPUTS)

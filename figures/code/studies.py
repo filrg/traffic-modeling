@@ -1,14 +1,12 @@
-"""Supporting numeric studies: tables and csv, no figures.
-
-These back the method section's claims about load, horizon and feasibility. They
-share the model-loading boilerplate with the figures, and `load-scaling` reuses
-`rate-error`'s autocorrelation machinery, which is why they sit together.
-"""
 from __future__ import annotations
+
+import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C
 
 SEED = C.SEED
@@ -16,7 +14,7 @@ BINS_PER_DAY = C.BINS_PER_DAY
 
 # --- rate-error -----------------------------------------------------------
 RATE_N_PATHS = 400
-# run lengths in days; 138.25 d = 13272 bins is the trace's own length
+# run lengths in days; 138.25 d is the trace's own length
 RATE_HORIZON_D = (1, 2, 4, 7, 14, 30, 60, 138.25, 180, 365, 730, 1095)
 
 # --- horizon --------------------------------------------------------------
@@ -69,9 +67,7 @@ def _longest_zero_run(x: np.ndarray) -> int:
 def rate_error() -> None:
     """How the realised-rate error shrinks with run length, analytically and measured.
 
-    The bar on a single run scales as 1/sqrt(T/tau_int), not 1/sqrt(T): the
-    correlation time of the gate latent sets how many independent stretches a
-    run of T bins actually contains.
+    The bar on a single run scales as 1/sqrt(T/tau_int), not 1/sqrt(T).
     """
     from seren_countfirst.models.gated import _gamma0
 
@@ -81,8 +77,7 @@ def rate_error() -> None:
     n_trace = int(st["n_bins"])
     g0 = _gamma0(p["mean"], p["a"], p["b"], p["c"], p["sigma_fast"], p["kappa"])
     mu = float(p["mean"])
-    # phi_long^h has decayed to ~1e-5 by 13000 bins, so the tail past the
-    # longest horizon contributes nothing to the sum
+    # truncated where phi_long^h has decayed below the summation floor
     rho = analytic_rho(p, min(int(max(RATE_HORIZON_D) * BINS_PER_DAY), 20000))
     tau_inf = 1.0 + 2.0 * float(np.sum(rho[1:]))
 
@@ -106,7 +101,7 @@ def rate_error() -> None:
         })
     df = pd.DataFrame(rows)
 
-    # local log-log slope: -0.5 is the asymptote, shallower while tau_int grows
+    # local log-log slope; -0.5 is the asymptote
     lt, lc = np.log(df["n_bins"].to_numpy()), np.log(df["cv_measured"].to_numpy())
     df["slope_measured"] = np.r_[np.nan, np.diff(lc) / np.diff(lt)]
     lp = np.log(df["cv_predicted"].to_numpy())
@@ -123,9 +118,8 @@ def rate_error() -> None:
             "mean_rate"]
     print(df[cols].round(4).to_string(index=False))
 
-    # the run length needed for a given rate error. The analytic constant is
-    # quoted rather than the fit: a CV estimated from 400 draws of a
-    # heavy-tailed total runs a few percent low
+    # the run length needed for a given rate error, from the analytic constant
+    # rather than the fit
     tail = df[df["n_bins"] >= 4 * tau_inf]
     const = float(np.sqrt(g0 * tau_inf) / mu)
     fitted = float(np.mean(tail["cv_measured"] * np.sqrt(tail["n_bins"])))
@@ -141,12 +135,11 @@ def rate_error() -> None:
 def horizon() -> None:
     """What depends on the horizon, analytically and measured.
 
-    The model is strictly stationary at every length, so no population statistic
-    depends on T. Three things do: the tau curve read as dispersion by scale and
-    as run-to-run error, the finite-T bias of second-order estimators, and the
-    extensive statistics.
+    The model is stationary at every length, so no population statistic depends
+    on T; the tau curve, the finite-T estimator bias and the extensive
+    statistics do.
     """
-    from seren_countfirst import acf, idc
+    from seren_countfirst.metrics import acf, idc
     from seren_countfirst.models.gated import _gamma0
 
     st = C.state()
@@ -158,7 +151,7 @@ def horizon() -> None:
     rho = analytic_rho(p, 20000)
     tau_inf = 1.0 + 2.0 * float(np.sum(rho[1:]))
 
-    # one tau function: dispersion by scale, reliability by run length
+    # one tau function serves both dispersion by scale and reliability by length
     print(f"model {st['winner']}")
     print(f"IDC(1) = {g0 / m:.3f}, tau_inf = {tau_inf:.1f} bins, "
           f"IDC ceiling = IDC(1) tau_inf = {g0 / m * tau_inf:,.0f}\n")
@@ -205,8 +198,7 @@ def horizon() -> None:
         rows.append({
             "days": d, "T": T,
             "median_max": float(np.median(mx)), "mean_max": float(mx.mean()),
-            # the marginal's 1 - 1/T quantile: the peak of an iid series of this
-            # length, so the gap measures what clustering costs a short run
+            # the marginal's 1 - 1/T quantile: an iid series of this length
             "marginal_q": float(np.quantile(long_path, 1 - 1 / T)),
             "median_longest_quiet": float(np.median([_longest_zero_run(x) for x in paths])),
             "idc_measured": float(np.mean([idc(x) for x in paths])),
@@ -222,15 +214,14 @@ def horizon() -> None:
 def load_scaling() -> None:
     """How each base-bin statistic moves with the load factor, closed form and measured.
 
-    Under the frozen proportional kappa rule, writing R = E[lambda^2]/m^2 at
-    alpha = 1, every base-bin statistic follows from one variance decomposition:
-    the mean is exactly linear, IDC is affine (A + B alpha, not proportional),
-    the ACF saturates, and P(N=0) takes alpha inside the expectation.
+    Under the proportional kappa rule all four follow from one variance
+    decomposition with R = E[lambda^2]/m^2 at alpha = 1: the mean is linear, IDC
+    affine, the ACF saturating, and P(N=0) takes alpha inside the expectation.
     """
     from scipy.optimize import brentq
     from scipy.stats import norm
 
-    from seren_countfirst import acf, idc
+    from seren_countfirst.metrics import acf, idc
     from seren_countfirst.models.gated import (
         _base_acf, _gamma0, _second_moment_ratio, _zero_prob,
     )
@@ -301,7 +292,7 @@ def load_scaling() -> None:
     print(df[["alpha", "zero_frac", "zero_frac_realised", "tau_int_bins",
               "cv_predicted", "path_cv", "max_bin_median"]].round(4).to_string(index=False))
 
-    # is P(0 | alpha) a probit-linear function of log alpha, slope -1/(a+b)?
+    # tests whether P(0 | alpha) is probit-linear in log alpha with slope -1/(a+b)
     z = norm.ppf(df["zero_frac"].to_numpy())
     slope, intercept = np.polyfit(np.log(df["alpha"].to_numpy()), z, 1)
     resid = float(np.max(np.abs(z - (intercept + slope * np.log(df["alpha"])))))
@@ -310,7 +301,7 @@ def load_scaling() -> None:
     print(f"  gate+ramp exponent a+b = {p['a'] + p['b']:.3f}, "
           f"-1/(a+b) = {-1 / (p['a'] + p['b']):.4f}")
 
-    # what load it takes to stop being idle, against the Poisson reference
+    # the load at which idleness ends, against the Poisson reference
     def p0_gap(la: float, target: float) -> float:
         return analytic(float(np.exp(la)))["zero_frac"] - target
 
@@ -324,10 +315,8 @@ def load_scaling() -> None:
 def latent_frontier() -> None:
     """Whether an ungated latent NB can reach the trace's three targets at once.
 
-    Matching the observed dispersion confines (V, kappa) to one curve. Along it
-    the empty-bin fraction and the attainable hourly ACF move in opposite
-    directions, so the question is the largest zero fraction reachable while the
-    ACF ceiling still clears the target.
+    Matching the dispersion confines (V, kappa) to one curve; this scans it for
+    the largest zero fraction whose ACF ceiling still clears the target.
     """
     from seren_countfirst.metrics import hourly_acf1_from_autocov
 
@@ -386,6 +375,8 @@ def latent_frontier() -> None:
           f"No admissible parameter set reproduces the three together.")
 
 
+INPUTS = ("state", "counts", "models")
+
 VIEWS = {
     "rate-error": rate_error,
     "horizon": horizon,
@@ -394,4 +385,4 @@ VIEWS = {
 }
 
 if __name__ == "__main__":
-    C.run(VIEWS, "rate-error", __doc__)
+    C.run(VIEWS, "rate-error", "Supporting numeric studies: tables and csv, no figures.", INPUTS)

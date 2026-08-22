@@ -1,8 +1,6 @@
-"""Event reconstruction: counts -> batch timestamps -> sizes -> jobs."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict
 
 import numpy as np
 import pandas as pd
@@ -30,13 +28,13 @@ class OffsetTemplates:
     """Empirical within-bin offsets, optionally conditional on the count class."""
 
     pooled: np.ndarray
-    by_class: Dict[str, np.ndarray]
+    by_class: dict[str, np.ndarray]
 
     @classmethod
     def from_trace(cls, batch_times_s: np.ndarray, bin_seconds: float, counts: np.ndarray,
                    classes: np.ndarray | None = None) -> "OffsetTemplates":
         offsets = np.mod(np.asarray(batch_times_s, dtype=float), bin_seconds)
-        by_class: Dict[str, np.ndarray] = {}
+        by_class: dict[str, np.ndarray] = {}
         if classes is not None:
             bin_index = (np.asarray(batch_times_s, dtype=float) // bin_seconds).astype(int)
             bin_index = np.clip(bin_index, 0, len(classes) - 1)
@@ -75,10 +73,200 @@ class OffsetTemplates:
             if len(chosen) == n:
                 break
         if len(chosen) < n:
-            remaining = np.setdiff1d(np.arange(slots), np.array(chosen, dtype=int), assume_unique=False)
+            remaining = np.setdiff1d(np.arange(slots), np.array(chosen, dtype=int),
+                                     assume_unique=False)
             extra = rng.choice(remaining, size=n - len(chosen), replace=False)
             chosen.extend(int(e) for e in extra)
         return np.sort(np.array(chosen, dtype=float)) * resolution_s
+
+
+def _place_distinct(cand_s: np.ndarray, n: int, bin_seconds: float,
+                    resolution_s: float) -> np.ndarray:
+    """Snap n candidate offsets onto distinct grid slots, keeping their order and spacing.
+
+    A point landing on a taken slot moves to the next free one and the run is then
+    capped from the right so the last point still fits inside the bin. Displacement
+    rather than resampling, so a point stays where the pattern put it and nothing is
+    ever merged. Both passes are monotone, so the result is strictly increasing even
+    when the bin is nearly full.
+    """
+    cells_per_s = int(round(1.0 / resolution_s))
+    slots = int(round(bin_seconds)) * cells_per_s
+    if n > slots:
+        raise ValueError(f"cannot place {n} distinct batches in {slots} slots of {resolution_s}s")
+    c = np.sort(np.clip(np.floor(np.asarray(cand_s, dtype=float)[:n] / resolution_s),
+                        0.0, slots - 1.0))
+    i = np.arange(n, dtype=float)
+    out = np.maximum.accumulate(c - i) + i
+    return np.minimum(out, slots - n + i) * resolution_s
+
+
+@dataclass
+class PatternTemplates:
+    """Whole observed within-bin point patterns, resampled by occupancy and class.
+
+    A bin's placement is copied from a trace bin of comparable occupancy rather
+    than assembled from independent offsets, so within-bin clustering survives.
+    Donors at or above the target count are preferred and thinned down; donors
+    are superposed only when none is large enough.
+    """
+
+    pooled: list
+    pooled_n: np.ndarray
+    by_class: dict[str, tuple]
+    n_donors: int = 20
+
+    @classmethod
+    def from_trace(cls, batch_times_s: np.ndarray, bin_seconds: float, counts: np.ndarray,
+                   classes: np.ndarray | None = None) -> "PatternTemplates":
+        t = np.sort(np.asarray(batch_times_s, dtype=float))
+        bin_index = (t // bin_seconds).astype(int)
+        offsets = t - bin_index * bin_seconds
+        starts = np.flatnonzero(np.r_[True, np.diff(bin_index) != 0])
+        stops = np.r_[starts[1:], len(t)]
+        patterns = [offsets[a:b] for a, b in zip(starts, stops)]
+        by_class: dict[str, tuple] = {}
+        if classes is not None:
+            labels = np.asarray(classes)[np.clip(bin_index[starts], 0, len(classes) - 1)]
+            for label in np.unique(labels):
+                by_class[str(label)] = cls._sorted([p for p, lb in zip(patterns, labels) if lb == label])
+        pooled, pooled_n = cls._sorted(patterns)
+        return cls(pooled=pooled, pooled_n=pooled_n, by_class=by_class)
+
+    @staticmethod
+    def _sorted(patterns: list) -> tuple:
+        """Patterns ordered by occupancy, so a donor window is a slice."""
+        order = np.argsort([len(p) for p in patterns], kind="stable")
+        ordered = [patterns[i] for i in order]
+        return ordered, np.array([len(p) for p in ordered], dtype=int)
+
+    def _donor(self, pats: list, lens: np.ndarray, n: int, rng: np.random.Generator) -> np.ndarray:
+        # window sits at or above n so the usual operation is thinning, not superposition
+        i = int(np.searchsorted(lens, n, side="left"))
+        hi = min(len(lens), i + self.n_donors)
+        lo = max(0, i - max(0, self.n_donors - (hi - i)))
+        return pats[int(rng.integers(lo, hi))]
+
+    def draw(self, n: int, rng: np.random.Generator, bin_seconds: float, label: str | None = None,
+             resolution_s: float = 1.0) -> np.ndarray:
+        """Return n distinct offsets copied from observed within-bin patterns."""
+        pats, lens = self.pooled, self.pooled_n
+        if label is not None and label in self.by_class and self.by_class[label][0]:
+            pats, lens = self.by_class[label]
+        if not pats:
+            slots = int(round(bin_seconds / resolution_s))
+            return np.sort(rng.choice(slots, size=n, replace=False)).astype(float) * resolution_s
+        drawn, total = [], 0
+        while total < n:
+            p = self._donor(pats, lens, n - total, rng)
+            drawn.append(p)
+            total += len(p)
+        cand = drawn[0] if len(drawn) == 1 else np.concatenate(drawn)
+        if len(cand) > n:
+            cand = cand[np.sort(rng.choice(len(cand), size=n, replace=False))]
+        return _place_distinct(cand, n, bin_seconds, resolution_s)
+
+
+@dataclass
+class CopulaOffsets:
+    """Within-bin placement as a Gaussian-copula spacing process.
+
+    The n points cut a bin into n+1 spacings drawn with lognormal marginals and
+    renormalised, so the bin edge is respected by construction. Spread `sigma`
+    varies with occupancy, and a stationary AR(1) latent couples consecutive
+    spacings, which is what puts short spacings in runs.
+    """
+
+    s0: float
+    s1: float
+    s2: float
+    phi: float
+    sigma2_bounds: tuple = (0.05, 6.0)
+
+    @classmethod
+    def from_trace(cls, batch_times_s: np.ndarray, bin_seconds: float, counts: np.ndarray,
+                   min_count: int = 2, debias: bool = True) -> "CopulaOffsets":
+        from scipy import stats as _stats
+
+        t = np.sort(np.asarray(batch_times_s, dtype=float))
+        bin_index = (t // bin_seconds).astype(int)
+        offsets = t - bin_index * bin_seconds
+        starts = np.flatnonzero(np.r_[True, np.diff(bin_index) != 0])
+        stops = np.r_[starts[1:], len(t)]
+
+        ns, sig2, ra, rb = [], [], [], []
+        for a, b in zip(starts, stops):
+            o = offsets[a:b]
+            if len(o) < min_count:
+                continue
+            s = np.diff(np.r_[0.0, o, bin_seconds]) / bin_seconds
+            # lognormal: median / mean = exp(-sigma^2 / 2), robust at small n
+            ratio = np.median(s) / s.mean()
+            if ratio <= 0:
+                continue
+            ns.append(len(o))
+            sig2.append(-2.0 * np.log(ratio))
+            # ranks taken inside the bin: pooling raw spacings would measure bin
+            # size, since every spacing in a busy bin is small
+            r = _stats.rankdata(s) / (len(s) + 1)
+            ra.append(r[:-1])
+            rb.append(r[1:])
+        ns, sig2 = np.array(ns, dtype=float), np.array(sig2, dtype=float)
+        ok = sig2 > 0
+        # quadratic in log n: the trace's spread is not monotone in occupancy
+        w = np.sqrt(ns[ok])
+        ln = np.log(ns[ok])
+        A = np.c_[np.ones(ok.sum()), ln, ln ** 2]
+        s0, s1, s2 = np.linalg.lstsq(A * w[:, None], np.log(sig2[ok]) * w, rcond=None)[0]
+
+        rho = float(np.corrcoef(np.concatenate(ra), np.concatenate(rb))[0, 1])
+        law = cls(s0=float(s0), s1=float(s1), s2=float(s2),
+                  phi=float(2.0 * np.sin(np.pi * rho / 6.0)))
+        if not debias:
+            return law
+        # renormalising n+1 spacings onto the bin correlates them on its own, so
+        # the closed form lands low; the offset depends on occupancy, not on phi
+        realised = law.rank_corr_on(counts, bin_seconds, np.random.default_rng(0))
+        rho_adj = float(np.clip(2.0 * rho - realised, -0.95, 0.95))
+        return cls(s0=law.s0, s1=law.s1, s2=law.s2,
+                   phi=float(2.0 * np.sin(np.pi * rho_adj / 6.0)))
+
+    def rank_corr_on(self, counts: np.ndarray, bin_seconds: float,
+                     rng: np.random.Generator) -> float:
+        """Return the within-bin rank correlation this law realises on given counts."""
+        from scipy import stats as _stats
+
+        ra, rb = [], []
+        for n in np.asarray(counts, dtype=int):
+            if n < 2:
+                continue
+            s = np.diff(np.r_[0.0, self.draw(int(n), rng, bin_seconds), bin_seconds])
+            r = _stats.rankdata(s) / (len(s) + 1)
+            ra.append(r[:-1])
+            rb.append(r[1:])
+        return float(np.corrcoef(np.concatenate(ra), np.concatenate(rb))[0, 1])
+
+    def sigma(self, n: int) -> float:
+        """Spacing spread at occupancy n."""
+        ln = np.log(max(n, 1))
+        lo, hi = self.sigma2_bounds
+        # the quadratic is fitted over the trace's occupancies and is only bounded
+        # away from degenerate spread outside them
+        return float(np.sqrt(np.clip(np.exp(self.s0 + self.s1 * ln + self.s2 * ln ** 2), lo, hi)))
+
+    def draw(self, n: int, rng: np.random.Generator, bin_seconds: float, label: str | None = None,
+             resolution_s: float = 1.0) -> np.ndarray:
+        """Return n distinct offsets from n+1 coupled lognormal spacings."""
+        k = n + 1
+        u = np.empty(k)
+        e = rng.standard_normal(k)
+        u[0] = e[0]
+        sd = np.sqrt(1.0 - self.phi ** 2)
+        for i in range(1, k):
+            u[i] = self.phi * u[i - 1] + sd * e[i]
+        s = np.exp(self.sigma(n) * u)
+        cand = bin_seconds * np.cumsum(s / s.sum())[:n]
+        return _place_distinct(cand, n, bin_seconds, resolution_s)
 
 
 def collision_risk(counts: np.ndarray, bin_seconds: float) -> pd.Series:
@@ -102,7 +290,7 @@ def reconstruct_events(
     bin_seconds: float,
     rng: np.random.Generator,
     batch_size_sampler,
-    offsets: OffsetTemplates | None = None,
+    offsets: OffsetTemplates | PatternTemplates | CopulaOffsets | None = None,
     classes: np.ndarray | None = None,
     on_overflow: str = "auto",
     resolution_s: float = 1.0,
@@ -111,9 +299,7 @@ def reconstruct_events(
     """Place exactly N_t distinct batch timestamps in every bin.
 
     The one-second grid comes from how the trace was recorded, not from the
-    workload, so a finer grid recovers quantised-away resolution. Rounding the
-    result back to whole seconds reproduces the saturated counts with inflated
-    sizes, so that reading remains available as a rendering step.
+    workload, so a finer grid recovers quantised-away resolution.
 
     on_overflow:
       'auto'      'raise' at `alpha <= 1`, 'subsecond' above it
@@ -167,7 +353,8 @@ def reconstruct_events(
     # batches that did not land on a whole second, i.e. the cost of refinement
     report["n_subsecond_placements"] = int(np.sum(np.mod(batch_times, 1.0) != 0.0))
     report["export_retention"] = 1.0  # every batch survives: nothing is ever merged
-    return ReconstructionResult(batch_times, np.asarray(sizes, dtype=int), job_times, counts, report)
+    return ReconstructionResult(batch_times, np.asarray(sizes, dtype=int), job_times,
+                                counts, report)
 
 
 # batch-size marks: iid versus conditional on activity class
@@ -180,20 +367,23 @@ def make_iid_mark_sampler(empirical_sizes: np.ndarray):
     return sampler
 
 
-def make_conditional_mark_sampler(empirical_sizes_by_class: Dict[str, np.ndarray], fallback: np.ndarray):
+def make_conditional_mark_sampler(empirical_sizes_by_class: dict[str, np.ndarray],
+                                  fallback: np.ndarray):
     pools = {k: np.asarray(v, dtype=int) for k, v in empirical_sizes_by_class.items()}
     fallback = np.asarray(fallback, dtype=int)
 
     def sampler(n, rng, classes, counts, bin_seconds, batch_times):
         if classes is None:
             return rng.choice(fallback, size=n, replace=True)
-        bin_index = np.clip((np.asarray(batch_times) // bin_seconds).astype(int), 0, len(classes) - 1)
+        bin_index = np.clip((np.asarray(batch_times) // bin_seconds).astype(int), 0,
+                            len(classes) - 1)
         labels = np.asarray(classes)[bin_index]
         out = np.empty(n, dtype=int)
         for label in np.unique(labels):
             mask = labels == label
             pool = pools.get(str(label), fallback)
-            out[mask] = rng.choice(pool if pool.size else fallback, size=int(mask.sum()), replace=True)
+            out[mask] = rng.choice(pool if pool.size else fallback,
+                                   size=int(mask.sum()), replace=True)
         return out
 
     return sampler

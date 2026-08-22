@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+.idea/
+.vscode/
+.DS_Store
+
+trace_seren.csv
+
+docs/
+CLAUDE.md
+
+results/
+results_check/
+results_*/
+
+figures/csv/
+figures/pdf/
+figures/png/
+
+seren_countfirst/tests/
+
+# Local snapshots of internal documentation and tests.
+.internal-backups/

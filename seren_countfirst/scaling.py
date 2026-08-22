@@ -1,7 +1,6 @@
-"""Load scaling by intensity multiplication, with superposition as a benchmark."""
 from __future__ import annotations
 
-from typing import List, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -38,21 +37,18 @@ def scaling_report(
     n_paths: int = 20,
     kappa_rules: Sequence[str] = ("constant", "proportional"),
     bin_seconds: float = 900.0,
-    busy_threshold: float | None = None,
     seed: int = 0,
     **sim_kwargs,
 ) -> pd.DataFrame:
     """Report rate error, IDC/ACF/tail drift and export collision rate per load.
 
-    Neither kappa rule preserves raw IDC and ACF, because the ratio of latent
-    variability to count noise moves with alpha; the drift is measured here.
+    Neither kappa rule preserves raw IDC and ACF; the drift is measured here.
     """
-    rows: List[dict] = []
+    rows: list[dict] = []
     for rule in kappa_rules:
         rng = np.random.default_rng(seed)
         ref_paths = [simulate_at_load(model, n_bins, 1.0, rng, rule, **sim_kwargs) for _ in range(n_paths)]
         ref_total = float(np.mean([p.sum() for p in ref_paths]))
-        thr = busy_threshold if busy_threshold is not None else float(np.quantile(ref_paths[0], 0.8))
         ref_idc = idc_curve(np.concatenate(ref_paths[:1]))
         ref_acf = acf(ref_paths[0], [1, 4, 96])
         # the same statistics averaged over every reference path

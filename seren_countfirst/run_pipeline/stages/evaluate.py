@@ -1,20 +1,15 @@
-"""Score every candidate and pick the winner."""
 from __future__ import annotations
 
 
 import numpy as np
 import pandas as pd
 
-from ... import (
-    base_marginals,
-    benchmark_table,
-    evaluate_candidate,
-    expanding_window_folds,
-    quiet_run_vs_geometric,
-)
+from ...data import expanding_window_folds
+from ...metrics import base_marginals, quiet_run_vs_geometric
+from ...evaluation import benchmark_table, evaluate_candidate
 from ...paths import RESULTS
 from ..config import FOLD_KWARGS, N_PATHS_EVAL, N_PATHS_FOLD, SEED
-from ..state import _load, _models, _save
+from ..state import fitted_models, load_state, save_state
 
 
 def _select_winner(results: list[dict]) -> str:
@@ -34,10 +29,10 @@ def _select_winner(results: list[dict]) -> str:
 
 
 def stage_evaluate() -> None:
-    state = _load()
+    state = load_state()
     RESULTS.mkdir(parents=True, exist_ok=True)
     n, thr, env = state["counts"].values, state["busy_threshold"], state["envelope"]
-    models = _models(state)
+    models = fitted_models(state)
     folds = expanding_window_folds(state["counts"], **FOLD_KWARGS)
     print(f"gate 7 folds: {[f.name for f in folds]} "
           f"(validation {FOLD_KWARGS['validation_days']:.0f}d each)")
@@ -84,4 +79,4 @@ def stage_evaluate() -> None:
     q.to_csv(RESULTS / f"quiet_run_{winner}.csv")
     print("\nwinner quiet-run vs geometric:", {k: round(v, 2) for k, v in q.items()})
     state["winner"] = winner
-    _save(state)
+    save_state(state)

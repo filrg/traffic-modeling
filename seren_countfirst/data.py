@@ -1,10 +1,8 @@
-"""Trace views, the regular count grid, and contiguous splits."""
 from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -14,7 +12,7 @@ BASE_BIN_S = 900.0
 SECONDS_PER_DAY = 86400.0
 
 # aggregation scales, in base bins
-SCALES: Dict[str, int] = {
+SCALES: dict[str, int] = {
     "15m": 1,
     "1h": 4,
     "6h": 24,
@@ -48,8 +46,7 @@ def load_trace(csv_path: str | Path) -> pd.DataFrame:
 def arrival_view(raw: pd.DataFrame, job_type: str = "SFT") -> pd.DataFrame:
     """Return every valid submission of the target type, stable-sorted.
 
-    Failed, cancelled and preempted jobs are kept: the scheduler had to absorb
-    them, so they belong to the arrival process.
+    Failed, cancelled and preempted submissions are kept.
     """
     view = raw.loc[raw["type"].eq(job_type)].copy()
     view = view.sort_values(["submit_time_dt", "job_id"], kind="stable")
@@ -175,11 +172,13 @@ class Split:
         return pd.DataFrame(rows)
 
 
-def contiguous_split(counts: CountSeries, fractions: Tuple[float, float, float] = (0.6, 0.2, 0.2)) -> Split:
+def contiguous_split(counts: CountSeries,
+                     fractions: tuple[float, float, float] = (0.6, 0.2, 0.2)) -> Split:
     n = len(counts)
     a = int(round(n * fractions[0]))
     b = a + int(round(n * fractions[1]))
-    return Split("contiguous", counts.slice_bins(0, a), counts.slice_bins(a, b), counts.slice_bins(b, n))
+    return Split("contiguous", counts.slice_bins(0, a), counts.slice_bins(a, b),
+                 counts.slice_bins(b, n))
 
 
 def expanding_window_folds(
@@ -187,20 +186,21 @@ def expanding_window_folds(
     validation_days: float = 21.0,
     n_folds: int = 4,
     min_train_days: float = 30.0,
-) -> List[Split]:
+) -> list[Split]:
     """Rolling-origin folds: training always precedes validation in time."""
     per_day = int(round(SECONDS_PER_DAY / counts.bin_seconds))
     val_bins = int(validation_days * per_day)
     min_train = int(min_train_days * per_day)
     n = len(counts)
-    folds: List[Split] = []
+    folds: list[Split] = []
     if n < min_train + val_bins:
         return folds
     last_origin = n - val_bins
     origins = np.linspace(min_train, last_origin, n_folds).astype(int)
     for k, origin in enumerate(np.unique(origins), start=1):
         folds.append(
-            Split(f"expanding_{k}", counts.slice_bins(0, origin), counts.slice_bins(origin, origin + val_bins))
+            Split(f"expanding_{k}", counts.slice_bins(0, origin),
+                  counts.slice_bins(origin, origin + val_bins))
         )
     return folds
 
@@ -209,19 +209,21 @@ def expanding_window_folds(
 class ActivityScheme:
     """Quantile thresholds learned on training data, then frozen everywhere."""
 
-    edges: Tuple[float, float, float]
-    labels: Tuple[str, str, str, str] = ("low", "medium", "high", "extreme")
+    edges: tuple[float, float, float]
+    labels: tuple[str, str, str, str] = ("low", "medium", "high", "extreme")
     busy_threshold: float = 0.0
     quiet_threshold: float = 0.0
     source: str = "train"
 
     @classmethod
-    def fit(cls, counts: CountSeries, quantiles=(0.50, 0.80, 0.95), busy_q: float = 0.80) -> "ActivityScheme":
+    def fit(cls, counts: CountSeries, quantiles=(0.50, 0.80, 0.95),
+            busy_q: float = 0.80) -> "ActivityScheme":
         occupied = counts.values[counts.values > 0]
         if occupied.size == 0:
             raise ValueError("no occupied bins: cannot fit activity thresholds")
         q = tuple(float(x) for x in np.quantile(occupied, quantiles))
-        return cls(edges=q, busy_threshold=float(np.quantile(occupied, busy_q)), quiet_threshold=0.0)
+        return cls(edges=q, busy_threshold=float(np.quantile(occupied, busy_q)),
+                   quiet_threshold=0.0)
 
     def classify(self, values: np.ndarray) -> np.ndarray:
         v = np.asarray(values, dtype=float)

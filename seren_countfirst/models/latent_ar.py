@@ -1,7 +1,5 @@
-"""Rungs 3 and 4: NB counts over one or two latent AR(1) components."""
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import scipy.sparse as sp
@@ -25,7 +23,7 @@ class NBLatentAR(CountModel):
     `log lambda_t = mu + sum_j x_t^(j) - V/2`, with V the total latent variance.
     """
 
-    def __init__(self, n_components: int = 2, calendar: Optional[CalendarTerm] = None) -> None:
+    def __init__(self, n_components: int = 2, calendar: CalendarTerm | None = None) -> None:
         super().__init__()
         if n_components not in (1, 2):
             raise ValueError("n_components must be 1 or 2")
@@ -33,9 +31,9 @@ class NBLatentAR(CountModel):
         self.calendar = calendar
         self.name = f"nb_ar{n_components}" + ("_cal" if calendar is not None else "")
         self.rung = 3 if n_components == 1 else 4
-        self.latent_mode_: Optional[np.ndarray] = None
+        self.latent_mode_: np.ndarray | None = None
 
-    def _unpack(self, theta: np.ndarray) -> Tuple[float, np.ndarray, np.ndarray, float]:
+    def _unpack(self, theta: np.ndarray) -> tuple[float, np.ndarray, np.ndarray, float]:
         if self.n_components == 1:
             mu, log_sigma, log_tau, log_kappa = theta
             sigma = np.array([np.exp(log_sigma)])
@@ -47,7 +45,8 @@ class NBLatentAR(CountModel):
             tau = np.array([tau_fast + np.exp(log_gap), tau_fast])  # gap parameterisation identifies the order
         return float(mu), sigma, tau, float(np.exp(np.clip(log_kappa, -20, 20)))
 
-    def _eta(self, mu: float, sigma: np.ndarray, x: np.ndarray, offset: np.ndarray | None) -> np.ndarray:
+    def _eta(self, mu: float, sigma: np.ndarray, x: np.ndarray,
+             offset: np.ndarray | None) -> np.ndarray:
         eta = mu - 0.5 * float(np.sum(sigma ** 2)) + x.reshape(self.n_components, -1).sum(axis=0)
         if offset is not None:
             eta = eta + offset
@@ -55,7 +54,7 @@ class NBLatentAR(CountModel):
 
     def _mode(self, n: np.ndarray, mu: float, sigma: np.ndarray, tau: np.ndarray, kappa: float,
               offset: np.ndarray | None, x0: np.ndarray | None, max_iter: int = 60,
-              tol: float = 1e-7) -> Tuple[np.ndarray, sp.csc_matrix, float, float]:
+              tol: float = 1e-7) -> tuple[np.ndarray, sp.csc_matrix, float, float]:
         T = len(n)
         J = self.n_components
         phi = np.array([half_life_to_phi(t) for t in tau])
@@ -111,7 +110,7 @@ class NBLatentAR(CountModel):
         return x, H, cur, grad_norm
 
     def _laplace_loglik(self, n: np.ndarray, theta: np.ndarray, offset: np.ndarray | None,
-                        x0: np.ndarray | None = None) -> Tuple[float, np.ndarray, float]:
+                        x0: np.ndarray | None = None) -> tuple[float, np.ndarray, float]:
         mu, sigma, tau, kappa = self._unpack(theta)
         if not np.all(np.isfinite([mu, kappa])) or np.any(sigma <= 0) or np.any(tau <= 0):
             return -np.inf, np.zeros(self.n_components * len(n)), np.inf
@@ -140,7 +139,6 @@ class NBLatentAR(CountModel):
         n = np.asarray(n, dtype=float)
         m = max(n.mean(), 1e-6)
         nc = n - m
-        denom = float(np.sum(nc * nc))
         H = int(min(max_lag, len(n) // 4))
         lags = np.arange(1, max(H, 2))
         gamma = np.array([float(np.sum(nc[:-h] * nc[h:])) / len(n) for h in lags])
@@ -202,14 +200,15 @@ class NBLatentAR(CountModel):
         for _ in range(max(n_restarts, 1) - 1):
             starts.append(base + rng.normal(0.0, 0.45, size=base.shape))
 
-        cache: Dict[bytes, Tuple[float, np.ndarray, float]] = {}
-        warm: Dict[str, np.ndarray | None] = {"x": None}
+        cache: dict[bytes, tuple[float, np.ndarray, float]] = {}
+        warm: dict[str, np.ndarray | None] = {"x": None}
 
         def negll(theta: np.ndarray) -> float:
             key = np.round(theta, 8).tobytes()
             if key in cache:
                 return -cache[key][0]
-            ll, x_hat, gnorm = self._laplace_loglik(n, np.asarray(theta, dtype=float), offset, warm["x"])
+            ll, x_hat, gnorm = self._laplace_loglik(n, np.asarray(theta, dtype=float),
+                                                    offset, warm["x"])
             if np.isfinite(ll):
                 warm["x"] = x_hat
             cache[key] = (ll, x_hat, gnorm)
@@ -233,7 +232,7 @@ class NBLatentAR(CountModel):
         self.latent_mode_ = x_hat
         phi = np.array([half_life_to_phi(t) for t in tau])
 
-        warnings: List[str] = []
+        warnings: list[str] = []
         for j, s in enumerate(sigma):
             if s < 1e-2:
                 warnings.append(f"sigma[{j}]={s:.2e} at lower boundary: prefer the simpler rung")

@@ -1,13 +1,13 @@
-"""Fit or calibrate the rungs of the ladder, and the rows that are not rungs."""
 from __future__ import annotations
 
 import time
 
 import numpy as np
 
-from ... import IIDNegBin, NBGatedLatent, NBINGARCH, NBLatentAR, ONOFFCounts, acf
+from ...metrics import acf
+from ...models import IIDNegBin, NBGatedLatent, NBINGARCH, NBLatentAR, ONOFFCounts
 from ..config import LONG_ACF_LAGS, MM4_KNOBS, RUNG_KEYS, SEED
-from ..state import _load, _save
+from ..state import load_state, save_state
 
 # state key -> published model name for the gated family
 _GATED_NAMES = {"gated_mm": "nb_gated_mm", "gated_mm2": "nb_gated_mm2",
@@ -29,9 +29,8 @@ def _fit_one(name: str, state: dict):
     if name in ("onoff", "onoff_pois"):
         return ONOFFCounts.calibrate(n, emission="nb" if name == "onoff" else "poisson")
     if name in ("ingarch", "ingarch_mle"):
-        # moment-calibrated on the same footing as the mm* rungs. `ingarch_mle`
-        # keeps the likelihood route: it is the one exactly comparable AIC, and
-        # it records that the MLE leaves the second-order stationary region.
+        # moment-calibrated on the same footing as the mm* rungs; `ingarch_mle`
+        # keeps the likelihood route, the one exactly comparable AIC
         if name == "ingarch_mle":
             return NBINGARCH().fit(n, n_restarts=3, maxiter=400, seed=SEED)
         tm, a_tr = state["trace_marginals"], acf(n, (1, 4))
@@ -71,7 +70,7 @@ def _fit_one(name: str, state: dict):
 
 
 def stage_fit(which: list[str]) -> None:
-    state = _load()
+    state = load_state()
     models = state.get("models", {})
     for arg in which:
         if arg not in RUNG_KEYS:
@@ -88,7 +87,9 @@ def stage_fit(which: list[str]) -> None:
         else:
             print(f"[{key}] {m.name}: {time.time()-t:.0f}s  ll={rep.loglik:.1f}  AIC={rep.aic:.1f}  "
                   f"converged={rep.converged}  warnings={rep.boundary_warnings or '-'}")
-        print("   params:", {k: (np.round(v, 3).tolist() if isinstance(v, np.ndarray) else round(float(v), 3))
-                             for k, v in m.params_.items() if not isinstance(v, np.ndarray) or v.size <= 4})
+        print("   params:",
+              {k: (np.round(v, 3).tolist() if isinstance(v, np.ndarray) else round(float(v), 3))
+                             for k, v in m.params_.items() if not isinstance(v,
+                                                         np.ndarray) or v.size <= 4})
     state["models"] = models
-    _save(state)
+    save_state(state)

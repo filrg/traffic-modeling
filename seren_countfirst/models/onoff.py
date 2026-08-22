@@ -1,4 +1,3 @@
-"""Discrete-time ON/OFF source: benchmark, not a rung."""
 from __future__ import annotations
 
 import numpy as np

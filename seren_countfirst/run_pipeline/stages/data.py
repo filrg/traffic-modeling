@@ -1,29 +1,17 @@
-"""Ingest the trace and build the count series."""
 from __future__ import annotations
 
 import time
 
 import numpy as np
 
-from ... import (
-    ActivityScheme,
-    arrival_view,
-    base_marginals,
-    bootstrap_metric_envelope,
-    build_batches,
-    build_counts,
-    contiguous_split,
-    idc_curve,
-    load_trace,
-    metric_vector,
-    scale_matched_idc_envelope,
-    segment_profiles,
-    sha256_file,
-    zero_iat_fraction,
-)
+from ...data import (
+    ActivityScheme, arrival_view, build_batches, build_counts, contiguous_split,
+    load_trace, segment_profiles, sha256_file, zero_iat_fraction)
+from ...metrics import base_marginals, idc_curve, metric_vector
+from ...bootstrap import bootstrap_metric_envelope, scale_matched_idc_envelope
 from ...paths import TRACE_CSV
 from ..config import AUDIT, SEED
-from ..state import _save
+from ..state import save_state
 
 
 def stage_data() -> None:
@@ -40,7 +28,8 @@ def stage_data() -> None:
         "n_batches": (batches.n_batches, AUDIT["n_batches"]),
         "zero_iat": (round(z_iat, 4), AUDIT["zero_iat"]),
         "mean_15m": (round(float(counts.values.mean()), 3), AUDIT["mean_15m"]),
-        "idc_15m": (round(float(counts.values.var(ddof=1) / counts.values.mean()), 2), AUDIT["idc_15m"]),
+        "idc_15m": (round(float(counts.values.var(ddof=1) / counts.values.mean()), 2),
+                    AUDIT["idc_15m"]),
         "zero_frac_15m": (round(float((counts.values == 0).mean()), 4), AUDIT["zero_frac_15m"]),
         "max_15m": (int(counts.values.max()), AUDIT["max_15m"]),
     }
@@ -58,7 +47,8 @@ def stage_data() -> None:
 
     thr = scheme.busy_threshold
     env = bootstrap_metric_envelope(
-        counts.values, lambda x: metric_vector(x, thr), method="stationary_24h", n_rep=150, seed=SEED
+        counts.values, lambda x: metric_vector(x,
+                                               thr), method="stationary_24h", n_rep=150, seed=SEED
     )
     # gate 3 grades IDC per scale against blocks long enough to carry it
     idc_env = scale_matched_idc_envelope(counts.values, n_rep=150, seed=SEED)
@@ -72,6 +62,6 @@ def stage_data() -> None:
         trace_idc=idc_curve(counts.values).to_dict(),
         n_bins=len(counts),
     )
-    _save(state)
+    save_state(state)
     print(f"trace IDC curve: { {k: round(v,1) for k, v in state['trace_idc'].items()} }")
     print(f"data stage done in {time.time()-t0:.0f}s; n_bins={len(counts)}, busy_thr={thr:.1f}")

@@ -1,4 +1,3 @@
-"""Gaussian AR(1) latent paths and their sparse precision matrices."""
 from __future__ import annotations
 
 import numpy as np

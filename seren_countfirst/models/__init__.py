@@ -1,4 +1,3 @@
-"""The model ladder: rungs 2-4b, plus the benchmark rows it is read against."""
 from .ar1 import (
     ar1_logdet_precision,
     ar1_path,

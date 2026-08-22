@@ -1,7 +1,6 @@
-"""Block-bootstrap baselines and trace uncertainty envelopes."""
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -10,7 +9,8 @@ from .data import SCALES
 from .metrics import aggregate, idc
 
 
-def moving_block_bootstrap(x: np.ndarray, block: int, rng: np.random.Generator, n_out: int | None = None) -> np.ndarray:
+def moving_block_bootstrap(x: np.ndarray, block: int, rng: np.random.Generator,
+                           n_out: int | None = None) -> np.ndarray:
     x = np.asarray(x, dtype=float)
     n_out = n_out or len(x)
     n_blocks = int(np.ceil(n_out / block))
@@ -18,7 +18,8 @@ def moving_block_bootstrap(x: np.ndarray, block: int, rng: np.random.Generator, 
     return np.concatenate([x[s:s + block] for s in starts])[:n_out]
 
 
-def stationary_bootstrap(x: np.ndarray, mean_block: int, rng: np.random.Generator, n_out: int | None = None) -> np.ndarray:
+def stationary_bootstrap(x: np.ndarray, mean_block: int, rng: np.random.Generator,
+                         n_out: int | None = None) -> np.ndarray:
     """Resample with geometric block lengths, so the resample is stationary."""
     x = np.asarray(x, dtype=float)
     n_out = n_out or len(x)
@@ -31,7 +32,8 @@ def stationary_bootstrap(x: np.ndarray, mean_block: int, rng: np.random.Generato
     return out
 
 
-def phase_matched_bootstrap(x: np.ndarray, period: int, rng: np.random.Generator, n_out: int | None = None) -> np.ndarray:
+def phase_matched_bootstrap(x: np.ndarray, period: int, rng: np.random.Generator,
+                            n_out: int | None = None) -> np.ndarray:
     """Resample whole periods, preserving calendar phase but not multi-day episodes."""
     x = np.asarray(x, dtype=float)
     n_out = n_out or len(x)
@@ -51,7 +53,7 @@ def segment_bootstrap(x: np.ndarray, n_segments: int, block: int, rng: np.random
     return moving_block_bootstrap(seg, min(block, max(len(seg) // 4, 1)), rng, n_out or len(x))
 
 
-BOOTSTRAPS: Dict[str, Callable] = {
+BOOTSTRAPS: dict[str, Callable] = {
     "moving_block_24h": lambda x, rng, n: moving_block_bootstrap(x, 96, rng, n),
     "stationary_6h": lambda x, rng, n: stationary_bootstrap(x, 24, rng, n),
     "stationary_12h": lambda x, rng, n: stationary_bootstrap(x, 48, rng, n),
@@ -71,11 +73,7 @@ def bootstrap_metric_envelope(
     seed: int = 0,
     n_out: int | None = None,
 ) -> pd.DataFrame:
-    """Return the median, 2.5%, 97.5% and SE of every metric under a resample.
-
-    The SE column normalises the discrepancy scores, so a deviation inside the
-    trace's own variability is not scored like one far outside it.
-    """
+    """Return the median, 2.5%, 97.5% and SE of every metric under a resample."""
     rng = np.random.default_rng(seed)
     fn = BOOTSTRAPS[method]
     rows = [metric_fn(fn(x, rng, n_out or len(x))) for _ in range(n_rep)]
@@ -101,22 +99,16 @@ def scale_matched_idc_envelope(
 ) -> pd.DataFrame:
     """Return an IDC envelope per scale, each from blocks long enough to carry it.
 
-    A block bootstrap with mean block L reproduces dispersion at aggregation
-    scale q only while q is well inside L. With one shared 24 h block the
-    resampled IDC collapses toward the one-day value, so multi-day envelopes sit
-    far below the trace and penalise a model that reproduces long-scale
-    dispersion. Each scale therefore gets `block_factor * q` bins, floored at
-    `min_block_bins`.
-
-    A scale whose blocks do not fit at least `min_blocks` times is marked
-    unsupported rather than graded. Scales sharing a block length share one set
-    of resamples.
+    Each scale gets `block_factor * q` bins, floored at `min_block_bins`: one
+    shared block length cannot serve every scale. A scale whose blocks do not fit
+    at least `min_blocks` times is marked unsupported rather than graded. Scales
+    sharing a block length share one set of resamples.
     """
     x = np.asarray(x, dtype=float)
     n = len(x)
     plan = {name: max(int(block_factor * q), int(min_block_bins)) for name, q in scales.items()}
 
-    draws: Dict[int, List[np.ndarray]] = {}
+    draws: dict[int, list[np.ndarray]] = {}
     for block in sorted(set(plan.values())):
         rng = np.random.default_rng(seed + block)
         draws[block] = [stationary_bootstrap(x, block, rng, n) for _ in range(n_rep)]
@@ -149,7 +141,7 @@ def bootstrap_baseline_table(
 ) -> pd.DataFrame:
     """Score every bootstrap method against the trace with the shared metric set."""
     trace = metric_fn(np.asarray(x, dtype=float))
-    rows: List[dict] = []
+    rows: list[dict] = []
     for method in (methods or list(BOOTSTRAPS)):
         env = bootstrap_metric_envelope(x, metric_fn, method, n_rep=n_rep, seed=seed)
         for metric in trace.index:

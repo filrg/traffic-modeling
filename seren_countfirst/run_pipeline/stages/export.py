@@ -1,21 +1,20 @@
-"""Freeze the winner into the model card."""
 from __future__ import annotations
 
 import json
 
 import numpy as np
 
-from ... import microstructure
+from ...provenance import environment
 from ...paths import RESULTS
-from ..config import N_PATHS_SCALING, SEED
-from ..state import _load, _models
+from ..config import SEED
+from ..state import fitted_models, load_state
 
 
 def stage_export() -> None:
-    state = _load()
+    state = load_state()
     RESULTS.mkdir(parents=True, exist_ok=True)
     name = state.get("winner", "gated_mm")
-    model = _models(state)[name]
+    model = fitted_models(state)[name]
     model.freeze()
     card = {
         "model": model.name,
@@ -23,10 +22,10 @@ def stage_export() -> None:
                      "gate_shift = participation scaling (different semantics, never mixed with alpha); "
                      "superposition = independent populations",
         "provenance": {"trace_sha256": state["trace_sha256"], "n_bins": state["n_bins"],
-                       "resolution": "15min", "seed": SEED},
+                       "resolution": "15min", "seed": SEED, **environment()},
         "params": {k: (np.asarray(v).tolist() if isinstance(v, np.ndarray) else float(v))
                    for k, v in model.params_.items()},
-        "fit": (model.report.to_dict() if model.report else {"estimator": "moment-calibrated; likelihood refit with larger budget pending"}),
+        "fit": (model.report.to_dict() if model.report else {"estimator": "moment-calibrated, not a likelihood fit; the gated MLE route was tried with a real budget and refuted -- it converges, three restarts agree, and it drives tau_slow shorter while inflating kappa to ~9e3"}),
         "trace_marginals": state["trace_marginals"],
         "trace_idc": state["trace_idc"],
         "handle": "GLI-NB (gated latent-intensity negative binomial)",

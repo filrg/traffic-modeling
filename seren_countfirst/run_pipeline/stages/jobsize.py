@@ -1,4 +1,3 @@
-"""Invert absorbed-work durations into work units and freeze a law for them."""
 from __future__ import annotations
 
 import json
@@ -9,28 +8,12 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from ... import (
-    ConditionalJobSize,
-    EmpiricalJobSize,
-    LogNormalMixture,
-    ScipyJobSize,
-    TAIL_QUANTILE,
-    TwoPartJobSize,
-    arrival_view,
-    attach_activity,
-    batch_frame,
-    bin_grid_index,
-    component_scoreboard,
-    fit_jobsize,
-    jobsize_table,
-    jobsize_view,
-    load_trace,
-    offered_work_stats,
-    roundtrip_error_s,
-    step_time_s,
-    write_jobsize_model,
-)
-from ...data import JOBSIZE_STATES
+from ...data import arrival_view, JOBSIZE_STATES, jobsize_view, load_trace
+from ...jobsize import (
+    attach_activity, batch_frame, bin_grid_index, component_scoreboard,
+    ConditionalJobSize, EmpiricalJobSize, fit_jobsize, jobsize_table, LogNormalMixture,
+    offered_work_stats, roundtrip_error_s, ScipyJobSize, step_time_s, TAIL_QUANTILE,
+    TwoPartJobSize, write_jobsize_model)
 from ...paths import RESULTS, TRACE_CSV
 from ..config import SEED
 
@@ -143,7 +126,7 @@ def stage_jobsize() -> None:
         print(f"  pi {w:.4f}  m {m:+8.4f}  s_batch {sb:.4f}  sigma_w {sw:.4f}  "
               f"(s_job {sj:.4f})")
     write_jobsize_model(conditional, RESULTS / "jobsize_conditional.json")
-    # a likelihood fit need not reproduce the sample mean: the top jobs carry it
+    # a likelihood fit need not reproduce the sample mean
     ranked = np.sort(sizes)[::-1]
     analytic_mean = (float(np.sum(model.weights * np.exp(model.mu + 0.5 * model.sigma ** 2)))
                      if isinstance(model, LogNormalMixture) else np.nan)

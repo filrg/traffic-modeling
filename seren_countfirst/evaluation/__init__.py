@@ -1,4 +1,3 @@
-"""Validation, sequential gates and parameter recovery."""
 from .candidates import benchmark_table, evaluate_candidate, summary_scores
 from .folds import FOLD_CORE_METRICS, evaluate_on_folds, scale_support
 from .gates import (

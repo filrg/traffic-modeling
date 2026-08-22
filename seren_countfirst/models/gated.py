@@ -1,7 +1,6 @@
-"""Gated latent-intensity NB, rung 4b of the ladder."""
 from __future__ import annotations
 
-from typing import Dict, List, Mapping, Optional
+from collections.abc import Mapping
 
 import numpy as np
 import pandas as pd
@@ -118,22 +117,20 @@ class NBGatedLatent(CountModel):
     def __init__(self, sharpness: float = 4.0) -> None:
         super().__init__()
         self.a = float(sharpness)  # profiled, not free-fitted
-        self.latent_mode_: Optional[np.ndarray] = None
+        self.latent_mode_: np.ndarray | None = None
 
     @classmethod
     def calibrate(cls, mean: float, variance: float, zero_fraction: float, acf_1h: float,
                   sharpness: float = 4.0, kappa: float = 8.0, sigma_fast: float = 0.6,
                   tau_fast_bins: float = 2.0,
-                  acf_long: Optional[Mapping[int, float]] = None,
-                  tau_long_bins: Optional[float] = None, w_long: float = 0.0) -> "NBGatedLatent":
+                  acf_long: Mapping[int, float] | None = None,
+                  tau_long_bins: float | None = None, w_long: float = 0.0) -> "NBGatedLatent":
         """Calibrate to the trace moments; no likelihood is evaluated.
 
         `acf_long` maps base-bin lags to target ACF values and enables the second
         slow scale: `w_long` and `tau_long_bins` are solved by least squares over
         those lags, with `tau_slow_bins` re-solved at each step to keep the hourly
-        lag-1 ACF exact. Multiple long lags are required because the trace's
-        lag-96 spike is diurnal echo, which a calendar-free model can only match
-        in envelope. Omitting `acf_long` gives the single-scale calibration.
+        lag-1 ACF exact. Omitting `acf_long` gives the single-scale calibration.
         """
         from scipy import stats
 
@@ -218,17 +215,16 @@ class NBGatedLatent(CountModel):
                            **kwargs) -> "NBGatedLatent":
         """Calibrate so the model's statistics at length `n_bins` hit the target.
 
-        `calibrate` matches an analytic ACF to a target measured on one finite
-        path. At 13272 bins the empirical ACF of this process runs 15-25% below
-        its true value, so that comparison is biased. Here the attenuation is
-        measured — simulate at `n_bins`, compare with the analytic value, and
-        re-solve against targets divided by that ratio. Seeded and deterministic;
-        `calibrate` itself stays analytic.
+        `calibrate` matches an analytic ACF to a target measured on one finite path,
+        which is biased at this length. Here the attenuation is measured — simulate
+        at `n_bins`, compare with the analytic value, and re-solve against targets
+        divided by that ratio. Seeded and deterministic; `calibrate` itself stays
+        analytic.
 
         `marginals` extends the correction to the variance, zero fraction and
-        `acf_1h`, which carry the same bias. The mean is never corrected: the
-        sample mean is unbiased and anchors the requested rate. Off by default,
-        so frozen candidates keep their published values and RNG stream.
+        `acf_1h`. The mean is never corrected: the sample mean is unbiased and
+        anchors the requested rate. Off by default, so frozen candidates keep their
+        published values and RNG stream.
         """
         targets = {int(h): float(v) for h, v in acf_long.items()}
         lags = sorted(targets)
@@ -302,7 +298,8 @@ class NBGatedLatent(CountModel):
             }
         )
 
-    def _eta_from_states(self, u: np.ndarray, x: np.ndarray, alpha: float, gate_shift: float) -> np.ndarray:
+    def _eta_from_states(self, u: np.ndarray, x: np.ndarray, alpha: float,
+                         gate_shift: float) -> np.ndarray:
         p = self.params_
         base = np.log(alpha * p["mean"]) - np.log(p["Z1"]) - 0.5 * p["sigma_fast"] ** 2
         return np.clip(
@@ -390,7 +387,8 @@ class NBGatedLatent(CountModel):
         if not np.all(np.isfinite([m, b, c, tau_s, sf, tau_f, kappa])):
             return -np.inf, None, np.inf
         T = len(n)
-        z, H, joint_at_mode, gnorm, (phi_s, phi_f) = self._mode(n, m, b, c, tau_s, sf, tau_f, kappa, x0)
+        z, H, joint_at_mode, gnorm, (phi_s, phi_f) = self._mode(n, m, b, c, tau_s, sf,
+                                     tau_f, kappa, x0)
         try:
             logdet_H = sparse_logdet(H)
         except (RuntimeError, ValueError, np.linalg.LinAlgError):
@@ -402,10 +400,7 @@ class NBGatedLatent(CountModel):
             seed: int = 0, verbose: bool = False, **kwargs) -> "NBGatedLatent":
         """Fit the single-scale submodel (`w_long = 0`) by Laplace MLE.
 
-        The second slow scale is calibrated by moments, not fitted. At
-        `n_restarts=3, maxiter=300` this estimator converges and restarts agree,
-        but it drives `tau_slow` shorter (12.3 bins against the moment-calibrated
-        17.3) and pushes overdispersion into kappa.
+        The second slow scale is calibrated by moments, never fitted.
         """
         self._check_mutable()
         n = np.asarray(counts, dtype=float)
@@ -423,7 +418,7 @@ class NBGatedLatent(CountModel):
         rng = np.random.default_rng(seed)
         starts = [base] + [base + rng.normal(0, 0.3, size=base.shape) for _ in range(max(n_restarts, 1) - 1)]
 
-        cache: Dict[bytes, float] = {}
+        cache: dict[bytes, float] = {}
         warm = {"z": None}
 
         def negll(theta):
@@ -452,7 +447,7 @@ class NBGatedLatent(CountModel):
         self.latent_mode_ = z
         tau_s, sf, tau_f = float(np.exp(log_ts)), float(np.exp(log_sf)), float(np.exp(log_tf))
 
-        warnings: List[str] = []
+        warnings: list[str] = []
         if tau_s * 4 > len(n):
             warnings.append("tau_slow within a factor 4 of the horizon: slow scale weakly identified")
         if abs(b) < 5e-2:

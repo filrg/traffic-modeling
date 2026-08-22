@@ -1,4 +1,3 @@
-"""Compose arrivals with sizes into a workload, and measure work against load."""
 from __future__ import annotations
 
 import itertools
@@ -7,18 +6,12 @@ import time
 import numpy as np
 import pandas as pd
 
-from ... import (
-    ActivityScheme,
-    EmpiricalJobSize,
-    OffsetTemplates,
-    assign_work,
-    make_iid_mark_sampler,
-    read_two_part_jobsize,
-    reconstruct_events,
-)
+from ...data import ActivityScheme
+from ...jobsize import assign_work, EmpiricalJobSize, read_two_part_jobsize
+from ...reconstruct import make_iid_mark_sampler, PatternTemplates, reconstruct_events
 from ...paths import RESULTS
 from ..config import N_PATHS_RECONSTRUCT, RECONSTRUCT_ALPHAS, SEED
-from ..state import _load, _models
+from ..state import fitted_models, load_state
 
 # the load factor the exported workload is written at
 EXPORT_ALPHA = 1.0
@@ -38,12 +31,11 @@ def stage_workload() -> None:
     """Give every generated job a work unit, then read the exponent work follows.
 
     Sizes are fitted on the states whose runtime the cluster absorbed, then
-    assigned to every arrival, including the preempted ones the size view
-    leaves out. The totals below therefore exceed the trace's own absorbed
-    work by roughly the ratio of the two job counts, which is reported.
+    assigned to every arrival, including the preempted ones the size view leaves
+    out; the ratio of the two job counts is reported beside the totals.
     """
     t0 = time.time()
-    state = _load()
+    state = load_state()
     RESULTS.mkdir(parents=True, exist_ok=True)
     size_json, pool_npz = RESULTS / "jobsize_two_part.json", RESULTS / "jobsize_pool.npz"
     if not (size_json.exists() and pool_npz.exists()):
@@ -53,12 +45,12 @@ def stage_workload() -> None:
 
     counts = state["counts"]
     bin_s = float(counts.bin_seconds)
-    model = _models(state)[state.get("winner", "gated_mm")]
+    model = fitted_models(state)[state.get("winner", "gated_mm")]
     cal = state["trace_marginals"]["mean"] / float(model.params_["mean"])
     origin = counts.index[0]
     times_s = (pd.DatetimeIndex(state["batch_times"]) - origin).total_seconds().to_numpy(dtype=float)
-    templates = OffsetTemplates.from_trace(times_s, bin_s, counts.values,
-                                           classes=_scheme(state).classify(counts.values))
+    templates = PatternTemplates.from_trace(times_s, bin_s, counts.values,
+                                            classes=_scheme(state).classify(counts.values))
     marks = make_iid_mark_sampler(np.asarray(state["batches_sizes"], dtype=int))
 
     print(f"size law: two-part over a {sizes_model.bulk_kind} bulk, cut "

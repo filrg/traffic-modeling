@@ -1,11 +1,11 @@
-"""Negative binomial helpers, NB2 parameterisation."""
 from __future__ import annotations
 
 import numpy as np
 from scipy.special import gammaln
 
 
-def nb2_loglik(n: np.ndarray, lam: np.ndarray, kappa: float, weights: np.ndarray | None = None) -> float:
+def nb2_loglik(n: np.ndarray, lam: np.ndarray, kappa: float,
+               weights: np.ndarray | None = None) -> float:
     n = np.asarray(n, dtype=float)
     lam = np.asarray(lam, dtype=float)
     ll = (

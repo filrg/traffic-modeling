@@ -1,4 +1,3 @@
-"""Rung 2: iid negative binomial, no temporal structure."""
 from __future__ import annotations
 
 import numpy as np
@@ -23,13 +22,15 @@ class IIDNegBin(CountModel):
 
         best = None
         for start_kappa in (0.05, 0.5, 5.0):
-            res = minimize(nll, x0=[np.log(max(n.mean(), 1e-6)), np.log(start_kappa)], method="Nelder-Mead",
+            res = minimize(nll, x0=[np.log(max(n.mean(), 1e-6)), np.log(start_kappa)],
+                           method="Nelder-Mead",
                            options={"xatol": 1e-8, "fatol": 1e-8, "maxiter": 4000})
             if best is None or res.fun < best.fun:
                 best = res
         mu, log_kappa = best.x
         self.params_ = {"mu": float(mu), "kappa": float(np.exp(log_kappa)), "mean": float(np.exp(mu))}
-        self.report = FitReport(bool(best.success), int(best.nit), float(np.linalg.norm(best.final_simplex[1] - best.fun)),
+        self.report = FitReport(bool(best.success), int(best.nit),
+                                float(np.linalg.norm(best.final_simplex[1] - best.fun)),
                                 float(-best.fun), 2, len(n), restarts=3)
         return self
 

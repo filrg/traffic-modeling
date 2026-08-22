@@ -1,10 +1,10 @@
-"""Score the winner's eight gates over many seeds and report the worst case."""
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-from ... import expanding_window_folds, scaling_report
+from ...data import expanding_window_folds
+from ...scaling import scaling_report
 from ...evaluation import GateEvidence, evaluate_gates, evaluate_on_folds
 from ...paths import RESULTS
 from ..config import (
@@ -15,7 +15,7 @@ from ..config import (
     N_PATHS_SCALING,
     SEED,
 )
-from ..state import _load, _models
+from ..state import fitted_models, load_state
 
 # Gate 3 scores the fraction of IDC scales inside the envelope, so it passes
 # upward; every other gate passes downward against its tolerance.
@@ -38,7 +38,7 @@ def _score_seed(state: dict, model, folds, thr: float, env, cal: float, seed: in
     so that seed `SEED` reproduces `gates_full_<winner>.csv` row for row.
     """
     scaling = scaling_report(model, state["n_bins"], n_paths=N_PATHS_SCALING,
-                             busy_threshold=thr, seed=seed)
+                             seed=seed)
     fold_ev = evaluate_on_folds(model, folds, thr, n_paths=N_PATHS_FOLD,
                                 seed=seed + 1, alpha=cal)
     rng = np.random.default_rng(seed + 1)
@@ -75,10 +75,10 @@ def _summarise(rows: pd.DataFrame, n_seeds: int) -> pd.DataFrame:
 
 
 def stage_certify() -> None:
-    state = _load()
+    state = load_state()
     RESULTS.mkdir(parents=True, exist_ok=True)
     name = state.get("winner", "gated_mm")
-    model = _models(state)[name]
+    model = fitted_models(state)[name]
     thr, env = state["busy_threshold"], state["envelope"]
     cal = state["trace_marginals"]["mean"] / float(model.params_["mean"])
     folds = expanding_window_folds(state["counts"], **FOLD_KWARGS)

@@ -1,7 +1,6 @@
-"""Rolling-origin fold evidence and the scale-support guard."""
 from __future__ import annotations
 
-from typing import Callable, List, Optional, Sequence, Tuple
+from collections.abc import Callable, Sequence
 
 import numpy as np
 import pandas as pd
@@ -24,7 +23,7 @@ def scale_support(n_bins: int) -> pd.DataFrame:
     ).set_index("scale")
 
 # metrics graded per fold; unsupported IDC scales are dropped via `scale_support`
-FOLD_CORE_METRICS: Tuple[str, ...] = (
+FOLD_CORE_METRICS: tuple[str, ...] = (
     "mean",
     "zero_bin_fraction",
     "IDC_15m", "IDC_1h", "IDC_6h", "IDC_1d", "IDC_2d", "IDC_4d", "IDC_7d",
@@ -42,22 +41,20 @@ def evaluate_on_folds(
     boot_rep: int = 100,
     boot_method: str = "stationary_24h",
     metric_names: Sequence[str] = FOLD_CORE_METRICS,
-    refit: Optional[Callable[[np.ndarray], object]] = None,
+    refit: Callable[[np.ndarray], object] | None = None,
     **sim_kwargs,
 ) -> pd.DataFrame:
     """Score one model against every rolling-origin validation window.
 
     Each window is graded against the joint uncertainty of the window (its
     trace-native bootstrap SE) and of the generator (metric spread across
-    simulated paths of the same duration). Both terms are needed: over 21 days a
-    stochastic model can only contain a realisation, not hit it, so the
-    bootstrap SE alone would demand deterministic agreement.
+    simulated paths of the same duration).
 
     The caller's global rate calibration travels in `sim_kwargs` unchanged; no
     per-fold rescaling is applied. Pass `refit` to fit on each fold's training
     part, which grades the estimator rather than the frozen candidate.
     """
-    rows: List[dict] = []
+    rows: list[dict] = []
     for k, fold in enumerate(folds, start=1):
         val = np.asarray(fold.validation.values, dtype=float)
         n = len(val)

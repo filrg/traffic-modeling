@@ -1,16 +1,16 @@
-"""The bootstrap yardstick candidates are read against."""
 from __future__ import annotations
 
 
-from ... import bootstrap_baseline_table, metric_vector
+from ...metrics import metric_vector
+from ...bootstrap import bootstrap_baseline_table
 from ...paths import RESULTS
 from ..config import SEED
-from ..state import _load, _save
+from ..state import load_state, save_state
 
 
 def stage_baselines() -> None:
     """Score every resampler with the shared harness, giving the candidates a yardstick."""
-    state = _load()
+    state = load_state()
     RESULTS.mkdir(parents=True, exist_ok=True)
     counts, thr = state["counts"].values, state["busy_threshold"]
     table = bootstrap_baseline_table(counts, lambda x: metric_vector(x, thr),
@@ -22,4 +22,4 @@ def stage_baselines() -> None:
     print("\n(a resampler covering ~all of its own metrics is self-consistent; one that "
           "does not cannot be used as a yardstick at those scales)")
     state["bootstrap_baselines"] = table
-    _save(state)
+    save_state(state)

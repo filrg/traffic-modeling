@@ -1,14 +1,12 @@
-"""Version-neutral pipeline state as npy + csv + json, and the one-time pickle migration."""
 from __future__ import annotations
 
 import json
-import pickle
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from ..paths import RESULTS, STATE_DIR
+from .paths import STATE_DIR
 
 OUT = STATE_DIR
 
@@ -18,7 +16,8 @@ _INDEXED_TABLES = ("envelope", "idc_envelope")
 # dropped on save, so anything a stage puts in `state` must be listed here.
 _FLAT_TABLES = ("scaling", "horizon", "horizon_scale_support", "bootstrap_baselines",
                 "microstructure", "reconstruction_by_alpha")
-_META_SCALARS = ("trace_sha256", "n_bins", "busy_threshold", "winner", "trace_marginals", "trace_idc")
+_META_SCALARS = ("trace_sha256", "n_bins", "busy_threshold", "winner",
+                 "trace_marginals", "trace_idc")
 
 
 def _jsonable(v):
@@ -29,69 +28,13 @@ def _jsonable(v):
     return v
 
 
-def migrate(state_path: Path = RESULTS / "state.pkl", out: Path = OUT) -> None:
-    """Convert a legacy state.pkl into the portable layout. Requires pandas 3.x."""
-    state = pickle.load(state_path.open("rb"))
-    out.mkdir(parents=True, exist_ok=True)
-
-    # count series -> npy + plain ISO index
-    counts = state["counts"]
-    np.save(out / "counts.npy", np.asarray(counts.values, dtype=float))
-    pd.Series(counts.index.astype(str), name="timestamp").to_csv(out / "counts_index.csv", index=False)
-
-    np.save(out / "batch_sizes.npy", np.asarray(state["batches_sizes"], dtype=int))
-    pd.Series(pd.DatetimeIndex(state["batch_times"]).astype(str), name="batch_time").to_csv(
-        out / "batch_times.csv", index=False
-    )
-
-    # tables -> csv with a reset, string-free index
-    for key in ("envelope", "scaling", "horizon"):
-        if key in state and isinstance(state[key], pd.DataFrame):
-            df = state[key].reset_index()
-            df.columns = [str(c) for c in df.columns]
-            df.to_csv(out / f"{key}.csv", index=False)
-
-    # models -> params json, rebuildable without pickling any class
-    models = {
-        name: {
-            "class": type(m).__name__,
-            "name": m.name,
-            "rung": _jsonable(getattr(m, "rung", None)),
-            "params": {k: _jsonable(v) for k, v in m.params_.items()},
-            "fit": m.report.to_dict() if getattr(m, "report", None) else None,
-        }
-        for name, m in state.get("models", {}).items()
-    }
-    (out / "models.json").write_text(json.dumps(models, indent=2, default=_jsonable))
-
-    scheme = state["scheme"]
-    (out / "meta.json").write_text(
-        json.dumps(
-            {
-                "trace_sha256": state["trace_sha256"],
-                "n_bins": int(state["n_bins"]),
-                "busy_threshold": float(state["busy_threshold"]),
-                "split_bounds": [int(x) for x in state["split_bounds"]],
-                "winner": state.get("winner"),
-                "trace_marginals": {k: _jsonable(v) for k, v in state["trace_marginals"].items()},
-                "trace_idc": {k: _jsonable(v) for k, v in state["trace_idc"].items()},
-                "activity_scheme": scheme.to_dict(),
-            },
-            indent=2,
-            default=_jsonable,
-        )
-    )
-    print(f"wrote {len(list(out.iterdir()))} files to {out}")
-    print("models:", list(models), "| winner:", state.get("winner"))
-
-
 def load_portable_state(out: Path = OUT) -> dict:
     """Read the portable state back on any pandas version.
 
     Returns an empty dict when no state has been written, so the first pipeline
     stage can start from nothing.
     """
-    from ..data import ActivityScheme, CountSeries
+    from .data import ActivityScheme, CountSeries
 
     meta_path = out / "meta.json"
     if not meta_path.exists():
@@ -127,8 +70,7 @@ def load_portable_state(out: Path = OUT) -> dict:
         if key in _INDEXED_TABLES:
             state[key] = df.set_index(df.columns[0])
         else:
-            # tolerate the index column written by the one-time migration
-            state[key] = df.drop(columns="index") if df.columns[0] == "index" else df
+            state[key] = df
     return state
 
 
@@ -160,7 +102,8 @@ def save_portable_state(state: dict, out: Path = OUT) -> None:
     counts = state.get("counts")
     if counts is not None:
         np.save(out / "counts.npy", np.asarray(counts.values, dtype=float))
-        pd.Series(counts.index.astype(str), name="timestamp").to_csv(out / "counts_index.csv", index=False)
+        pd.Series(counts.index.astype(str),
+                  name="timestamp").to_csv(out / "counts_index.csv", index=False)
     if "batches_sizes" in state:
         np.save(out / "batch_sizes.npy", np.asarray(state["batches_sizes"], dtype=int))
     if "batch_times" in state:
@@ -201,7 +144,7 @@ def save_portable_state(state: dict, out: Path = OUT) -> None:
 
 def _rebuild_report(fit: dict | None):
     """Recreate a FitReport from its serialised form; None if the model was never fitted."""
-    from ..models import FitReport
+    from .models import FitReport
 
     if not fit:
         return None
@@ -209,7 +152,8 @@ def _rebuild_report(fit: dict | None):
     if n_obs is None:
         # legacy entries stored only the derived criteria: invert BIC for n_obs
         bic, ll, k = fit.get("BIC"), fit.get("loglik"), fit.get("n_params")
-        n_obs = int(round(float(np.exp((bic + 2.0 * ll) / k)))) if None not in (bic, ll, k) and k else 0
+        n_obs = int(round(float(np.exp((bic + 2.0 * ll) / k)))) if None not in (bic, ll,
+                    k) and k else 0
     return FitReport(
         converged=bool(fit.get("converged", False)),
         n_iter=int(fit.get("n_iter", 0)),
@@ -224,8 +168,8 @@ def _rebuild_report(fit: dict | None):
 
 def rebuild_model(entry: dict):
     """Recreate a model object from its params json; no pickle is involved."""
-    from ..models import IIDNegBin, NBINGARCH, NBLatentAR, NBRegimeSwitch, ONOFFCounts
-    from ..models import NBGatedLatent
+    from .models import IIDNegBin, NBINGARCH, NBLatentAR, NBRegimeSwitch, ONOFFCounts
+    from .models import NBGatedLatent
 
     cls = {"IIDNegBin": IIDNegBin, "NBLatentAR": NBLatentAR,
            "NBRegimeSwitch": NBRegimeSwitch, "NBGatedLatent": NBGatedLatent,
@@ -245,7 +189,3 @@ def rebuild_model(entry: dict):
     model.role = entry.get("role", type(model).role)
     model.report = _rebuild_report(entry.get("fit"))
     return model
-
-
-if __name__ == "__main__":
-    migrate()

@@ -1,23 +1,17 @@
-"""Counts to batch timestamps, sizes and job arrivals."""
 from __future__ import annotations
 
 
 import numpy as np
 import pandas as pd
 
-from ... import (
-    ActivityScheme,
-    OffsetTemplates,
-    collision_risk,
-    export_check,
-    make_conditional_mark_sampler,
-    make_iid_mark_sampler,
-    microstructure,
-    reconstruct_events,
-)
+from ...data import ActivityScheme
+from ...metrics import microstructure
+from ...reconstruct import (
+    collision_risk, export_check, make_conditional_mark_sampler, make_iid_mark_sampler,
+    OffsetTemplates, PatternTemplates, reconstruct_events)
 from ...paths import RESULTS
 from ..config import N_PATHS_RECONSTRUCT, RECONSTRUCT_ALPHAS, SEED
-from ..state import _load, _models, _save
+from ..state import fitted_models, load_state, save_state
 
 
 def _trace_events(state: dict) -> tuple:
@@ -38,18 +32,26 @@ def stage_reconstruct() -> None:
     """Reconstruct events and score them against the trace's microstructure.
 
     This layer decides where inside a bin the batches land, which produces the
-    zero-inter-arrival structure. Reported, not gated: a ninth structural gate
-    would invalidate the eight-gate certification.
+    zero-inter-arrival structure. Reported, not gated.
     """
-    state = _load()
+    state = load_state()
     RESULTS.mkdir(parents=True, exist_ok=True)
     counts = state["counts"]
     bin_s = float(counts.bin_seconds)
-    model = _models(state)[state.get("winner", "gated_mm")]
+    model = fitted_models(state)[state.get("winner", "gated_mm")]
     cal = state["trace_marginals"]["mean"] / float(model.params_["mean"])
 
     times_s, sizes, trace_classes, scheme = _trace_events(state)
-    templates = OffsetTemplates.from_trace(times_s, bin_s, counts.values, classes=trace_classes)
+    # placement laws: whole observed patterns by occupancy, against the independent
+    # offsets they replaced. 94% of gaps are within-bin, so this layer owns the gap
+    # marginal; the iid arm stays as the recorded negative
+    placements = {
+        "pattern": PatternTemplates.from_trace(times_s, bin_s, counts.values,
+                                               classes=trace_classes),
+        "iid_offsets": OffsetTemplates.from_trace(times_s, bin_s, counts.values,
+                                                  classes=trace_classes),
+    }
+    templates = placements["pattern"]
     trace_jobs = np.repeat(times_s, sizes)
     trace_micro = microstructure(trace_jobs, times_s, counts.values)
     print("trace microstructure:", {k: round(float(v), 4) for k, v in trace_micro.items()})
@@ -70,23 +72,25 @@ def stage_reconstruct() -> None:
                  for _ in range(N_PATHS_RECONSTRUCT)]
 
     rows, checks, overflow = [], [], 0
-    for label, sampler in samplers.items():
-        for rep, syn in enumerate(syn_paths):
-            rng = np.random.default_rng(SEED + 5000 + rep)
-            try:
-                # thresholds stay frozen from the training interval
-                res = reconstruct_events(syn, bin_s, rng, sampler, offsets=templates,
-                                         classes=scheme.classify(syn))
-            except ValueError:
-                # an overflowing bin is counted, never merged away. It occurs at
-                # alpha = 1 because the model's upper tail runs past the trace max.
-                overflow += 1
-                continue
-            rows.append({"marks": label, "replicate": rep, "n_batches": res.n_batches,
-                         **microstructure(res.job_times_s, res.batch_times_s, syn).to_dict()})
-            checks.append({"marks": label, "replicate": rep, **export_check(res, syn).to_dict()})
+    for place, offsets in placements.items():
+        for label, sampler in samplers.items():
+            for rep, syn in enumerate(syn_paths):
+                rng = np.random.default_rng(SEED + 5000 + rep)
+                try:
+                    # thresholds stay frozen from the training interval
+                    res = reconstruct_events(syn, bin_s, rng, sampler, offsets=offsets,
+                                             classes=scheme.classify(syn))
+                except ValueError:
+                    # an overflowing bin is counted, never merged away
+                    overflow += 1
+                    continue
+                tag = {"placement": place, "marks": label, "replicate": rep}
+                rows.append({**tag, "n_batches": res.n_batches,
+                             **microstructure(res.job_times_s, res.batch_times_s, syn).to_dict()})
+                checks.append({**tag, **export_check(res, syn).to_dict()})
     if overflow:
-        print(f"note: {overflow} of {2 * N_PATHS_RECONSTRUCT} paths overflowed the "
+        n_runs = len(placements) * len(samplers) * N_PATHS_RECONSTRUCT
+        print(f"note: {overflow} of {n_runs} paths overflowed the "
               f"{int(bin_s)}-slot grid at alpha = 1 and are excluded from the microstructure "
               f"summary (trace max bin 530; the model's tail runs past it)")
     per_path = pd.DataFrame(rows)
@@ -95,9 +99,10 @@ def stage_reconstruct() -> None:
     check_df.to_csv(RESULTS / "export_check.csv", index=False)
 
     stats = ["zero_iat_fraction", "positive_gap_median_s", "positive_gap_q99_s", "zero_bin_fraction"]
-    summary = per_path.groupby("marks")[stats + ["n_batches"]].agg(["mean", "std"])
+    summary = per_path.groupby(["placement", "marks"])[stats + ["n_batches"]].agg(["mean", "std"])
     micro_df = pd.concat([
-        pd.DataFrame([{"marks": "TRACE", **trace_micro.to_dict(), "n_batches": len(times_s)}]),
+        pd.DataFrame([{"placement": "TRACE", "marks": "TRACE", **trace_micro.to_dict(),
+                       "n_batches": len(times_s)}]),
         summary.xs("mean", axis=1, level=1).reset_index(),
     ], ignore_index=True)
     micro_df.to_csv(RESULTS / "microstructure.csv", index=False)
@@ -156,4 +161,4 @@ def stage_reconstruct() -> None:
 
     state["microstructure"] = micro_df
     state["reconstruction_by_alpha"] = grid_df
-    _save(state)
+    save_state(state)

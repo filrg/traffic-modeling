@@ -1,7 +1,5 @@
-"""Negative-binomial INGARCH(1,1): the observation-driven benchmark, not a rung."""
 from __future__ import annotations
 
-from typing import List
 
 import numpy as np
 import pandas as pd
@@ -29,9 +27,7 @@ def _unpack(theta: np.ndarray) -> tuple:
 
     The parameterisation is the admissible region itself: `a + b = expit(.)` is
     below 1 and `b` is a fraction of `b_max`, so every reachable point is
-    second-order stationary with `a, b >= 0`. Unconstrained, the MLE on this
-    trace leaves the region (a + b = 0.995, no finite variance) and the graded
-    moments become undefined.
+    second-order stationary with `a, b >= 0`.
     """
     d = float(np.exp(np.clip(theta[0], -30.0, 30.0)))
     s = float(expit(theta[1]))                       # a + b, the ACF decay rate
@@ -56,11 +52,10 @@ class NBINGARCH(CountModel):
 
         lambda_t = d + a lambda_{t-1} + b N_{t-1},  N_t | F_{t-1} ~ NB2(lambda_t, kappa)
 
-    With no latent state the likelihood is exact, unlike the Laplace
-    approximation the latent rungs need. Two structural limits follow: the ACF
-    is a single geometric `(a+b)^h`, and the feedback term vanishes whenever
-    `N_{t-1} = 0`, so quiet stretches pull the conditional mean to `d/(1-a)`.
-    Zero inflation is not fitted here.
+    With no latent state the likelihood is exact. Two structural limits follow:
+    the ACF is a single geometric `(a+b)^h`, and the feedback term vanishes
+    whenever `N_{t-1} = 0`, so quiet stretches pull the conditional mean to
+    `d/(1-a)`. Zero inflation is not fitted here.
     """
 
     name = "nb_ingarch"
@@ -107,12 +102,9 @@ class NBINGARCH(CountModel):
                   n_restarts: int = 4, seed: int = 0) -> "NBINGARCH":
         """Match the analytic (mean, IDC, ACF lag 1, ACF lag 4); no likelihood is evaluated.
 
-        Matches the frozen candidate's moment calibration, so the comparison is
-        like for like. `fit` maximises the conditional likelihood, which is
-        indifferent to whether the graded stationary variance exists, and on this
-        trace it reaches that boundary. Four targets against four free parameters,
-        solved inside the admissible region; residuals are kept in `params_`
-        because an exact solution is not guaranteed.
+        Four targets against four free parameters, solved inside the admissible
+        region; residuals stay in `params_` because an exact solution is not
+        guaranteed.
         """
         model = cls()
         targets = np.array([float(mean), float(variance) / float(mean),
@@ -182,7 +174,7 @@ class NBINGARCH(CountModel):
         """Fit by exact conditional MLE, the first bin conditioned on the stationary mean.
 
         The recursion is observed, so this is the true likelihood and its AIC is
-        directly comparable with rungs 2-4.
+        comparable with the latent rungs'.
         """
         self._check_mutable()
         n = np.asarray(counts, dtype=float)
@@ -212,7 +204,7 @@ class NBINGARCH(CountModel):
         self._store(d, a, b, kappa, 4)
         p = self.params_
 
-        warnings: List[str] = []
+        warnings: list[str] = []
         if p["persistence"] > 0.999:
             warnings.append("a + b at the unit root: the persistence is not stationary in practice")
         if p["b_over_b_max"] > 0.99:

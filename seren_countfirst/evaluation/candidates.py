@@ -1,8 +1,7 @@
-"""Scoring one rung of the ladder, and the cross-candidate benchmark table."""
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Dict, Optional, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -13,7 +12,8 @@ from .folds import evaluate_on_folds
 from .gates import GateEvidence, GateReport, evaluate_gates
 
 
-def summary_scores(trace_counts: np.ndarray, syn_paths: Sequence[np.ndarray], busy_threshold: float) -> pd.Series:
+def summary_scores(trace_counts: np.ndarray, syn_paths: Sequence[np.ndarray],
+                   busy_threshold: float) -> pd.Series:
     """Return the ranking score; meaningful only among candidates that passed the gates."""
     trace = np.asarray(trace_counts, dtype=float)
     return pd.Series(
@@ -36,14 +36,14 @@ def evaluate_candidate(
     envelope: pd.DataFrame,
     n_paths: int = 20,
     seed: int = 0,
-    fold_n_paths: Optional[int] = None,
-    folds: Optional[Sequence[Split]] = None,
-    scaling: Optional[pd.DataFrame] = None,
-    idc_envelope: Optional[pd.DataFrame] = None,
-    evidence: Optional[GateEvidence] = None,
+    fold_n_paths: int | None = None,
+    folds: Sequence[Split] | None = None,
+    scaling: pd.DataFrame | None = None,
+    idc_envelope: pd.DataFrame | None = None,
+    evidence: GateEvidence | None = None,
     stop_at_first_failure: bool = True,
     **sim_kwargs,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     """Score one rung of the ladder with the shared harness.
 
     `folds` and `scaling` supply gates 7 and 8. The fold windows reuse the same
@@ -76,7 +76,7 @@ def evaluate_candidate(
     }
 
 
-def benchmark_table(results: Sequence[Dict[str, object]]) -> pd.DataFrame:
+def benchmark_table(results: Sequence[dict[str, object]]) -> pd.DataFrame:
     rows = []
     for r in results:
         gates: GateReport = r["gates"]

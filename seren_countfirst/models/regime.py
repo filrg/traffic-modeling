@@ -1,7 +1,5 @@
-"""Markov regime-switching level: benchmark, not a rung."""
 from __future__ import annotations
 
-from typing import List
 
 import numpy as np
 from scipy.optimize import minimize
@@ -15,12 +13,9 @@ from .nb import nb2_sample
 class NBRegimeSwitch(CountModel):
     """Two-state Markov level with NB2 emissions, plus an optional fast AR(1).
 
-    On this trace the marginal targets {mean, IDC_15m, zero fraction, ACF} are
-    jointly infeasible for a Gaussian log-latent, and zero bins arrive in long
-    runs, so the quiet state must be persistent.
-
-    The optional fast AR(1) is fitted conditionally on the Viterbi regime path,
-    an approximation to the exact switching state-space likelihood.
+    The quiet state is persistent, so zero bins arrive in runs rather than
+    independently. The optional fast AR(1) is fitted conditionally on the Viterbi
+    regime path, an approximation to the exact switching state-space likelihood.
     """
 
     name = "nb_regime"
@@ -128,7 +123,7 @@ class NBRegimeSwitch(CountModel):
 
         lam, kappa, P, pi = best["lam"], best["kappa"], best["P"], best["pi"]
         n_params = K + 1 + K * (K - 1)
-        warnings: List[str] = []
+        warnings: list[str] = []
         if np.any(np.diag(P) > 1 - 1e-4):
             warnings.append("absorbing regime: transition probability at boundary")
         if np.max(lam) / max(np.min(lam), 1e-9) < 1.5:
@@ -156,7 +151,8 @@ class NBRegimeSwitch(CountModel):
                                 n_params, T, warnings, restarts=n_restarts)
         return self
 
-    def _viterbi(self, n: np.ndarray, lam: np.ndarray, kappa: float, P: np.ndarray, pi: np.ndarray) -> np.ndarray:
+    def _viterbi(self, n: np.ndarray, lam: np.ndarray, kappa: float, P: np.ndarray,
+                 pi: np.ndarray) -> np.ndarray:
         logB = self._emission_loglik(n, lam, kappa)
         T, K = logB.shape
         delta = np.log(pi + 1e-300) + logB[0]

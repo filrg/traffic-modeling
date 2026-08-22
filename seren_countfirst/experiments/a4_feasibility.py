@@ -1,4 +1,3 @@
-"""Run the ladder on a surrogate carrying the trace's four base-bin facts."""
 from __future__ import annotations
 
 import time
@@ -33,22 +32,14 @@ def calibrate_surrogate(mean, variance, zero_fraction, acf_1h_target, kappa=8.0,
                         tau_fast_bins=2.0, dwell_off_bins=32.0, lam_off=0.01):
     """Calibrate a regime level with continuous spread inside the active state.
 
-    A bare two-state Markov level does not reach the trace marginals: matching
-    the variance from a two-point intensity forces kappa to about 0.1, and
-    observation noise that heavy is white, so the ACF collapses as it does for
-    the Gaussian log-latent. The excess variance must sit in a persistent
-    latent, giving
+    A bare two-state Markov level cannot reach the trace marginals, so the excess
+    variance sits in a persistent latent:
 
         log lambda_t = mu_{z_t} + x_t - V/2,   z_t a two-state Markov chain,
                                                x_t a stationary AR(1)
 
-    with kappa fixed. Writing p = pi_off and using E[e^{x - V/2}] = 1:
-
-        lam_on   = (m - p lam_off) / (1 - p)
-        E[lam^2] = (p lam_off^2 + (1-p) lam_on^2) e^V
-        gamma_0  = m + E[lam^2]/kappa + E[lam^2] - m^2
-
-    which pins e^V given p, leaving the zero fraction to determine p.
+    with kappa fixed. The base-bin variance pins the latent variance given
+    `pi_off`, leaving the zero fraction to determine `pi_off`.
     """
     from scipy import integrate, stats
 
@@ -125,11 +116,7 @@ def calibrate_surrogate(mean, variance, zero_fraction, acf_1h_target, kappa=8.0,
 
 
 def _gated_moment(x: np.ndarray):
-    """Build rung 4b by moments, matching how the production model is calibrated.
-
-    An MLE fit here would test a refuted estimator: the likelihood drives
-    tau_slow shorter and inflates kappa.
-    """
+    """Build rung 4b by moments, matching how the production model is calibrated."""
     from ..run_pipeline import LONG_ACF_LAGS, MM4_KNOBS, SEED
 
     bm = base_marginals(x)
@@ -140,8 +127,7 @@ def _gated_moment(x: np.ndarray):
         n_bins=len(x), seed=SEED, **MM4_KNOBS)
 
 
-# set by gate 1, as in the pipeline: a 5% tolerance needs the ensemble mean's
-# SE well under a third of it. Same value as N_PATHS_EVAL.
+# sized by gate 1, as in the pipeline; same value as N_PATHS_EVAL
 N_PATHS_LADDER = 1200
 
 
@@ -151,14 +137,16 @@ def main(seed: int = 20240728, n_paths: int = N_PATHS_LADDER, n_surrogate_paths:
     print("=" * 78)
     print("A.4  analytic sweep along the constraint  e^V (1 + 1/kappa) = C")
     print("=" * 78)
-    table = marginal_feasibility(TRACE["mean"], TRACE["variance"], TRACE["zero_fraction"], TRACE["acf_1h_lag1"])
+    table = marginal_feasibility(TRACE["mean"], TRACE["variance"],
+                                 TRACE["zero_fraction"], TRACE["acf_1h_lag1"])
     print(table.to_string(index=False, float_format=lambda v: f"{v:.4f}"))
     print(f"\nC = {table.attrs['C']:.3f}   any (V, kappa) satisfying both targets: {table.attrs['feasible']}")
 
     print("\n" + "=" * 78)
     print("Surrogate with the trace's four base-bin statistics")
     print("=" * 78)
-    truth, info = calibrate_surrogate(TRACE["mean"], TRACE["variance"], TRACE["zero_fraction"], TRACE["acf_1h_lag1"])
+    truth, info = calibrate_surrogate(TRACE["mean"], TRACE["variance"],
+                                      TRACE["zero_fraction"], TRACE["acf_1h_lag1"])
     print({k: round(float(v), 4) for k, v in info.items()})
     targets = {
         "mean": TRACE["mean"],
@@ -167,8 +155,8 @@ def main(seed: int = 20240728, n_paths: int = N_PATHS_LADDER, n_surrogate_paths:
         "acf_1h_lag1": TRACE["acf_1h_lag1"],
     }
 
-    # the construction pins the targets in expectation, so it is checked against
-    # the ensemble: per-path CV is 0.17 on the mean and 0.93 on IDC
+    # the construction pins the targets in expectation only, so it is checked
+    # against the ensemble rather than against one path
     rng = np.random.default_rng(seed)
     draws = [truth.simulate(TRACE["n_bins"], rng) for _ in range(n_surrogate_paths)]
     ens = pd.DataFrame([base_marginals(x) for x in draws])
@@ -177,10 +165,8 @@ def main(seed: int = 20240728, n_paths: int = N_PATHS_LADDER, n_surrogate_paths:
         print(f"  {k:>14}: target {tgt:9.4f}   ensemble mean {ens[k].mean():9.4f}"
               f"   median {ens[k].median():9.4f}   per-path CV {ens[k].std(ddof=1)/ens[k].mean():.3f}")
 
-    # the ladder needs one realisation, so pick a typical path by total
-    # log-distance from the ensemble median across all four facts. Selecting on
-    # the mean alone is not enough: at CV 0.93 a median-mean path can still sit
-    # at the 86th percentile on dispersion.
+    # one realisation, picked by total log-distance from the ensemble median
+    # across all four facts; the mean alone does not identify a typical path
     dev = sum((np.log(ens[k] / ens[k].median())).abs() for k in targets)
     pick = int(dev.idxmin())
     surrogate = draws[pick]
@@ -213,7 +199,8 @@ def main(seed: int = 20240728, n_paths: int = N_PATHS_LADDER, n_surrogate_paths:
     for label, build in candidates:
         t = time.time()
         model = build(surrogate)
-        res = evaluate_candidate(model, surrogate, busy_threshold, envelope, n_paths=n_paths, seed=seed + 1)
+        res = evaluate_candidate(model, surrogate, busy_threshold, envelope,
+                                 n_paths=n_paths, seed=seed + 1)
         res["label"] = label
         results.append(res)
         gates = res["gates"]

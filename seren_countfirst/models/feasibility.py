@@ -1,7 +1,6 @@
-"""Marginal feasibility diagnostic for the Gaussian log-latent NB family."""
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd

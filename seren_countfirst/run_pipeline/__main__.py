@@ -1,4 +1,3 @@
-"""Command-line entry point: `python -m seren_countfirst.run_pipeline <stage>`."""
 from __future__ import annotations
 
 import sys
@@ -41,5 +40,10 @@ def main(argv: list[str]) -> None:
         STAGES[name]([])
 
 
-if __name__ == "__main__":
+def cli() -> None:
+    """Console entry point; the `seren-pipeline` script declared in pyproject."""
     main(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    cli()
