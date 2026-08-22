@@ -5,16 +5,15 @@ import pandas as pd
 
 from ...artifacts import write_csv
 from ...scaling import scaling_report
-from ...paths import RESULTS
 from ..config import (
     CERTIFY_SEEDS,
     N_PATHS_EVAL,
     N_PATHS_FOLD,
     N_PATHS_SCALING,
-    SEED,
 )
+from ..context import PipelineContext, resolve_context
 from ..gate_diagnostics import full_gate_frame
-from ..state import fitted_models, load_state
+from ..state import fitted_models
 
 # Gate 3 scores the fraction of IDC scales inside the envelope, so it passes
 # upward; every other gate passes downward against its tolerance.
@@ -62,12 +61,12 @@ def _summarise(rows: pd.DataFrame, n_seeds: int) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-def stage_certify() -> None:
-    state = load_state()
-    RESULTS.mkdir(parents=True, exist_ok=True)
+def stage_certify(context: PipelineContext | None = None) -> None:
+    context = resolve_context(context)
+    state = context.load_state()
     name = state.get("winner", "gated_mm")
     model = fitted_models(state)[name]
-    seeds = [SEED + 1000 * i for i in range(CERTIFY_SEEDS)]
+    seeds = [context.seed + 1000 * i for i in range(CERTIFY_SEEDS)]
 
     frames: list[pd.DataFrame] = []
     for i, seed in enumerate(seeds, start=1):
@@ -75,7 +74,9 @@ def stage_certify() -> None:
         frames.append(frame)
         # written every seed so a long run stays inspectable and interruptible
         write_csv(
-            pd.concat(frames, ignore_index=True), RESULTS / f"certify_seeds_{name}.csv", index=False
+            pd.concat(frames, ignore_index=True),
+            context.result(f"certify_seeds_{name}.csv"),
+            index=False,
         )
         failed = frame.loc[~frame["passed"], "name"].tolist()
         print(
@@ -85,7 +86,7 @@ def stage_certify() -> None:
 
     rows = pd.concat(frames, ignore_index=True)
     summary = _summarise(rows, len(seeds))
-    write_csv(summary, RESULTS / f"certify_summary_{name}.csv", index=False)
+    write_csv(summary, context.result(f"certify_summary_{name}.csv"), index=False)
 
     # `passed` from the gate machinery is authoritative; `margin` only ranks.
     disagree = rows.loc[rows["passed"] != (rows["margin"] <= 1.0 + 1e-9)]

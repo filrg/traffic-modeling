@@ -33,7 +33,7 @@ them. It has its own README.
 | `state.py` | the resumable pipeline state as npy + csv + json, and model rebuilding; never pickle |
 | `artifacts.py` | atomic writers for pipeline and figure artifacts |
 | `ensemble.py` | the display-ensemble rules: which simulated run is representative, and how one is redrawn at another load |
-| `run_pipeline/` | the staged command-line driver; `python -m seren_countfirst.run_pipeline` lists the stages |
+| `run_pipeline/` | the staged CLI, stage registry, named seed streams and injectable path/state context |
 | `experiments/` | standalone studies that are not part of any stage |
 | `tests/` | harness invariants, numerical pins and a smoke suite |
 

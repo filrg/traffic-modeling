@@ -17,15 +17,16 @@ from ...data import (
 )
 from ...metrics import base_marginals, idc_curve, metric_vector
 from ...bootstrap import bootstrap_metric_envelope, scale_matched_idc_envelope
-from ...paths import TRACE_CSV
-from ..config import AUDIT, SEED
-from ..state import save_state
+from ...state import PipelineState
+from ..config import AUDIT
+from ..context import PipelineContext, resolve_context
 
 
-def stage_data() -> None:
+def stage_data(context: PipelineContext | None = None) -> None:
+    context = resolve_context(context)
     t0 = time.time()
-    state = {"trace_sha256": sha256_file(TRACE_CSV)}
-    raw = load_trace(TRACE_CSV)
+    state: PipelineState = {"trace_sha256": sha256_file(context.trace_csv)}
+    raw = load_trace(context.trace_csv)
     view = arrival_view(raw, "SFT")
     batches = build_batches(view)
     counts = build_counts(batches.times)
@@ -63,10 +64,10 @@ def stage_data() -> None:
         lambda x: metric_vector(x, thr),
         method="stationary_24h",
         n_rep=150,
-        seed=SEED,
+        seed=context.seed,
     )
     # gate 3 grades IDC per scale against blocks long enough to carry it
-    idc_env = scale_matched_idc_envelope(counts.values, n_rep=150, seed=SEED)
+    idc_env = scale_matched_idc_envelope(counts.values, n_rep=150, seed=context.seed)
     print("scale-matched IDC envelope (gate 3):")
     print(idc_env.assign(trace=idc_curve(counts.values)).round(1).to_string())
     state.update(
@@ -82,6 +83,6 @@ def stage_data() -> None:
         trace_idc=idc_curve(counts.values).to_dict(),
         n_bins=len(counts),
     )
-    save_state(state)
+    context.save_state(state)
     print(f"trace IDC curve: { {k: round(v, 1) for k, v in state['trace_idc'].items()} }")
     print(f"data stage done in {time.time() - t0:.0f}s; n_bins={len(counts)}, busy_thr={thr:.1f}")

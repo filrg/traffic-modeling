@@ -13,6 +13,7 @@ from .config import (
     RUNG_KEYS,
     SEED,
 )
+from .context import PipelineContext, PortableStateStore, StateStore, default_context
 from .registry import (
     REPRODUCTION_STEPS,
     STAGE_SPECS,
@@ -47,11 +48,15 @@ __all__ = [
     "RECONSTRUCT_ALPHAS",
     "RUNG_KEYS",
     "SEED",
+    "PipelineContext",
+    "PortableStateStore",
     "REPRODUCTION_STEPS",
     "STAGE_SPECS",
     "STAGES",
     "ReproductionStep",
     "StageSpec",
+    "StateStore",
+    "default_context",
     "stage_baselines",
     "stage_certify",
     "stage_data",

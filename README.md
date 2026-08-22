@@ -106,7 +106,7 @@ SEREN_RESULTS=$PWD/results_scratch python -m seren_countfirst.run_pipeline evalu
 | `seren_countfirst/state.py` | the typed, resumable pipeline state as npy, csv and json; never pickle |
 | `seren_countfirst/artifacts.py` | atomic CSV, JSON and NPY writers used by the pipeline |
 | `seren_countfirst/ensemble.py` | which simulated run is representative, and how one is redrawn at another load |
-| `seren_countfirst/run_pipeline/` | the staged command-line driver |
+| `seren_countfirst/run_pipeline/` | the staged CLI with a central registry and injectable runtime context |
 | `seren_countfirst/experiments/` | standalone feasibility studies |
 | `seren_countfirst/tests/` | harness invariants and numerical regression pins |
 | `figures/code/` | the manuscript figures; `make_all.py` renders every one |

@@ -6,8 +6,9 @@ import numpy as np
 
 from ...metrics import acf
 from ...models import IIDNegBin, NBGatedLatent, NBINGARCH, NBLatentAR, ONOFFCounts
+from ...state import PipelineState
 from ..config import LONG_ACF_LAGS, MM4_KNOBS, RUNG_KEYS, SEED
-from ..state import load_state, save_state
+from ..context import PipelineContext, resolve_context
 
 # state key -> published model name for the gated family
 _GATED_NAMES = {
@@ -20,7 +21,7 @@ _GATED_NAMES = {
 }
 
 
-def _fit_one(name: str, state: dict):
+def _fit_one(name: str, state: PipelineState, base_seed: int = SEED):
     """Fit or calibrate one rung on the trace counts."""
     n = state["counts"].values
     if name == "r2":
@@ -30,21 +31,21 @@ def _fit_one(name: str, state: dict):
     if name == "r4":
         return NBLatentAR(2).fit(n, n_restarts=2, maxiter=250)
     if name == "gated":
-        return NBGatedLatent().fit(n, n_restarts=1, maxiter=80, seed=SEED)
+        return NBGatedLatent().fit(n, n_restarts=1, maxiter=80, seed=base_seed)
     if name in ("onoff", "onoff_pois"):
         return ONOFFCounts.calibrate(n, emission="nb" if name == "onoff" else "poisson")
     if name in ("ingarch", "ingarch_mle"):
         # moment-calibrated on the same footing as the mm* rungs; `ingarch_mle`
         # keeps the likelihood route, the one exactly comparable AIC
         if name == "ingarch_mle":
-            return NBINGARCH().fit(n, n_restarts=3, maxiter=400, seed=SEED)
+            return NBINGARCH().fit(n, n_restarts=3, maxiter=400, seed=base_seed)
         tm, a_tr = state["trace_marginals"], acf(n, (1, 4))
         return NBINGARCH.calibrate(
             mean=tm["mean"],
             variance=tm["IDC_15m"] * tm["mean"],
             acf_lag1=float(a_tr[1]),
             acf_lag4=float(a_tr[4]),
-            seed=SEED,
+            seed=base_seed,
         )
     if name in _GATED_NAMES:
         # moment calibration against the frozen trace facts, never a likelihood fit
@@ -75,7 +76,7 @@ def _fit_one(name: str, state: dict):
                     **args,
                     acf_long=long_targets,
                     n_bins=state["n_bins"],
-                    seed=SEED,
+                    seed=base_seed,
                     marginals=(name == "gated_mm5"),
                     **knobs,
                 )
@@ -86,15 +87,16 @@ def _fit_one(name: str, state: dict):
     raise SystemExit(f"unknown rung {name}")
 
 
-def stage_fit(which: list[str]) -> None:
-    state = load_state()
+def stage_fit(which: list[str], context: PipelineContext | None = None) -> None:
+    context = resolve_context(context)
+    state = context.load_state()
     models = state.get("models", {})
     for arg in which:
         if arg not in RUNG_KEYS:
             raise SystemExit(f"unknown rung {arg}; expected one of {sorted(RUNG_KEYS)}")
         key = RUNG_KEYS[arg]
         t = time.time()
-        m = _fit_one(key, state)
+        m = _fit_one(key, state, context.seed)
         models[key] = m
         rep = m.report
         if rep is None:
@@ -117,4 +119,4 @@ def stage_fit(which: list[str]) -> None:
             },
         )
     state["models"] = models
-    save_state(state)
+    context.save_state(state)

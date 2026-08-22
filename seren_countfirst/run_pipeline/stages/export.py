@@ -6,14 +6,13 @@ import numpy as np
 
 from ...artifacts import write_json
 from ...provenance import environment
-from ...paths import RESULTS
-from ..config import SEED
-from ..state import fitted_models, load_state
+from ..context import PipelineContext, resolve_context
+from ..state import fitted_models
 
 
-def stage_export() -> None:
-    state = load_state()
-    RESULTS.mkdir(parents=True, exist_ok=True)
+def stage_export(context: PipelineContext | None = None) -> None:
+    context = resolve_context(context)
+    state = context.load_state()
     name = state.get("winner", "gated_mm")
     model = fitted_models(state)[name]
     model.freeze()
@@ -26,7 +25,7 @@ def stage_export() -> None:
             "trace_sha256": state["trace_sha256"],
             "n_bins": state["n_bins"],
             "resolution": "15min",
-            "seed": SEED,
+            "seed": context.seed,
             **environment(),
         },
         "params": {
@@ -80,6 +79,6 @@ def stage_export() -> None:
             "eight-gate certification, so it is deliberately not added",
         ],
     }
-    write_json(card, RESULTS / "model_card.json")
+    write_json(card, context.result("model_card.json"))
     print(json.dumps({k: card[k] for k in ("model", "params", "open_decisions")}, indent=2)[:1200])
     print("export done -> results/model_card.json")

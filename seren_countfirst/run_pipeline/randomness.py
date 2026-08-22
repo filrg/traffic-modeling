@@ -18,10 +18,10 @@ class SeedStream(IntEnum):
     WORKLOAD_MARKS = 7000
 
 
-def seed(stream: SeedStream, replicate: int = 0) -> int:
+def seed(stream: SeedStream, replicate: int = 0, *, base: int = SEED) -> int:
     """Return a legacy-compatible seed for one named random stream."""
-    return SEED + int(stream) + int(replicate)
+    return base + int(stream) + int(replicate)
 
 
-def generator(stream: SeedStream, replicate: int = 0) -> np.random.Generator:
-    return np.random.default_rng(seed(stream, replicate))
+def generator(stream: SeedStream, replicate: int = 0, *, base: int = SEED) -> np.random.Generator:
+    return np.random.default_rng(seed(stream, replicate, base=base))

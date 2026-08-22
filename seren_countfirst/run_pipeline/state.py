@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 
-from ..paths import RESULTS, STATE_DIR
-from ..state import PipelineState, load_portable_state, rebuild_model, save_portable_state
+from ..state import PipelineState, rebuild_model
+from .context import default_context
 
 
 def load_state() -> PipelineState:
-    return load_portable_state(STATE_DIR)
+    return default_context().load_state()
 
 
 def save_state(state: PipelineState) -> None:
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    save_portable_state(state, STATE_DIR)
+    default_context().save_state(state)
 
 
 def fitted_models(state: PipelineState) -> dict:
