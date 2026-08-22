@@ -138,7 +138,7 @@ def _model_entry(model: CountModel, previous: ModelEntry | None = None) -> Model
         "class": type(model).__name__,
         "name": model.name,
         "rung": _jsonable(getattr(model, "rung", None)),
-        # role must round-trip: an ablation rebuilt as a candidate could win selection
+        # Preserve the published table schema; selection now comes from the registry.
         "role": getattr(model, "role", "candidate"),
         "params": {k: _jsonable(v) for k, v in model.params_.items()},
         "fit": fit,

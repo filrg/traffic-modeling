@@ -1,21 +1,38 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from collections.abc import Sequence
+from dataclasses import replace
+from typing import Any, NotRequired, TypedDict
 
 import numpy as np
 import pandas as pd
 
 from ..data import Split
 from ..metrics import d_acf, d_idc, d_idc_shape
+from ..models import CountModel
 from .folds import evaluate_on_folds
 from .gates import GateEvidence, GateReport, evaluate_gates
+
+_MODEL_RUNG = object()
+
+
+class ModelEvaluation(TypedDict):
+    model: str
+    rung: object
+    role: str
+    fit: dict[str, Any] | None
+    gates: GateReport
+    scores: pd.Series
+    paths: list[np.ndarray]
+    fold_evidence: pd.DataFrame | None
+    key: NotRequired[str]
+    label: NotRequired[str]
 
 
 def summary_scores(
     trace_counts: np.ndarray, syn_paths: Sequence[np.ndarray], busy_threshold: float
 ) -> pd.Series:
-    """Return the ranking score; meaningful only among candidates that passed the gates."""
+    """Return the ranking scores used after structural gate evaluation."""
     trace = np.asarray(trace_counts, dtype=float)
     return pd.Series(
         {
@@ -32,8 +49,8 @@ def summary_scores(
     )
 
 
-def evaluate_candidate(
-    model,
+def evaluate_model(
+    model: CountModel,
     trace_counts: np.ndarray,
     busy_threshold: float,
     envelope: pd.DataFrame,
@@ -45,19 +62,17 @@ def evaluate_candidate(
     idc_envelope: pd.DataFrame | None = None,
     evidence: GateEvidence | None = None,
     stop_at_first_failure: bool = True,
+    role: str | None = None,
+    rung: object = _MODEL_RUNG,
     **sim_kwargs,
-) -> dict[str, object]:
-    """Score one rung of the ladder with the shared harness.
-
-    `folds` and `scaling` supply gates 7 and 8. The fold windows reuse the same
-    `sim_kwargs`, including the global rate calibration.
-    """
+) -> ModelEvaluation:
+    """Simulate and score any count model with the shared gate harness."""
     rng = np.random.default_rng(seed)
     paths = [model.simulate(len(trace_counts), rng, **sim_kwargs) for _ in range(n_paths)]
     base = evidence or GateEvidence()
-    fold_ev = base.fold_evidence
+    fold_evidence = base.fold_evidence
     if folds:
-        fold_ev = evaluate_on_folds(
+        fold_evidence = evaluate_on_folds(
             model,
             folds,
             busy_threshold,
@@ -65,9 +80,9 @@ def evaluate_candidate(
             **sim_kwargs,
             n_paths=fold_n_paths if fold_n_paths is not None else min(n_paths, 10),
         )
-    ev = replace(
+    resolved_evidence = replace(
         base,
-        fold_evidence=fold_ev,
+        fold_evidence=fold_evidence,
         scaling=base.scaling if scaling is None else scaling,
         idc_envelope=base.idc_envelope if idc_envelope is None else idc_envelope,
     )
@@ -77,38 +92,38 @@ def evaluate_candidate(
         busy_threshold,
         envelope,
         stop_at_first_failure=stop_at_first_failure,
-        evidence=ev,
+        evidence=resolved_evidence,
     )
     scores = summary_scores(trace_counts, paths, busy_threshold)
     return {
         "model": model.name,
-        "rung": model.rung,
-        "role": model.role,
+        "rung": getattr(model, "rung", None) if rung is _MODEL_RUNG else rung,
+        "role": getattr(model, "role", "candidate") if role is None else role,
         "fit": model.report.to_dict() if model.report else None,
         "gates": gates,
         "scores": scores,
         "paths": paths,
-        "fold_evidence": ev.fold_evidence,
+        "fold_evidence": resolved_evidence.fold_evidence,
     }
 
 
-def benchmark_table(results: Sequence[dict[str, object]]) -> pd.DataFrame:
+def benchmark_table(results: Sequence[ModelEvaluation]) -> pd.DataFrame:
     rows = []
-    for r in results:
-        gates: GateReport = r["gates"]
-        fail = gates.first_failure
+    for result in results:
+        gates: GateReport = result["gates"]
+        failure = gates.first_failure
+        fit = result["fit"] or {}
         rows.append(
             {
-                "model": r["model"],
-                "rung": r["rung"],
-                "role": r.get("role", "candidate"),
-                "loglik": (r["fit"] or {}).get("loglik", np.nan),
-                "AIC": (r["fit"] or {}).get("AIC", np.nan),
+                "model": result["model"],
+                "rung": result["rung"],
+                "role": result["role"],
+                "loglik": fit.get("loglik", np.nan),
+                "AIC": fit.get("AIC", np.nan),
                 "gates_passed": gates.passed,
-                "first_failed_gate": fail.name if fail else "-",
-                **r["scores"].to_dict(),
-                "boundary_warnings": "; ".join((r["fit"] or {}).get("boundary_warnings", []))
-                or "-",
+                "first_failed_gate": failure.name if failure else "-",
+                **result["scores"].to_dict(),
+                "boundary_warnings": "; ".join(fit.get("boundary_warnings", [])) or "-",
             }
         )
     return pd.DataFrame(rows).sort_values(["gates_passed", "D_IDC"], ascending=[False, True])

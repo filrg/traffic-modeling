@@ -5,15 +5,16 @@ import pandas as pd
 
 from ...artifacts import write_csv
 from ...data import expanding_window_folds
+from ...evaluation import ModelEvaluation, benchmark_table, evaluate_model
 from ...metrics import base_marginals, quiet_run_vs_geometric
-from ...evaluation import benchmark_table, evaluate_candidate
 from ..config import FOLD_KWARGS, N_PATHS_EVAL, N_PATHS_FOLD
 from ..context import PipelineContext, resolve_context
+from ..model_registry import CANDIDATE_KEYS, model_spec
 from ..randomness import SeedStream, generator, seed
 from ..state import fitted_models
 
 
-def _select_winner(results: list[dict]) -> str:
+def _select_winner(results: list[ModelEvaluation]) -> str:
     """Return the key of the candidate passing the most gates, ties broken by D_IDC.
 
     `evaluate_gates` stops at the first failure, so the number of passed
@@ -24,7 +25,8 @@ def _select_winner(results: list[dict]) -> str:
         passed = sum(g.passed for g in res["gates"].results)
         return (-passed, float(res["scores"]["D_IDC"]))
 
-    candidates = [r for r in results if r.get("role", "candidate") == "candidate"]
+    by_key = {r["key"]: r for r in results}
+    candidates = [by_key[key] for key in CANDIDATE_KEYS if key in by_key]
     if not candidates:
         raise SystemExit("no candidate models to select from (benchmarks cannot win)")
     return min(candidates, key=rank)["key"]
@@ -40,17 +42,19 @@ def stage_evaluate(context: PipelineContext | None = None) -> None:
         f"gate 7 folds: {[f.name for f in folds]} "
         f"(validation {FOLD_KWARGS['validation_days']:.0f}d each)"
     )
-    results, marg_rows = (
-        [],
-        [dict(model="TRACE", role="-", **state["trace_marginals"], gates="-", first_fail="-")],
-    )
+    results: list[ModelEvaluation] = []
+    marg_rows = [
+        dict(model="TRACE", role="-", **state["trace_marginals"], gates="-", first_fail="-")
+    ]
     for name, model in models.items():
+        try:
+            spec = model_spec(name)
+        except KeyError as exc:
+            raise SystemExit(str(exc)) from exc
         # the single global scalar rate calibration, applied as an intercept shift
         cal = state["trace_marginals"]["mean"] / float(model.params_["mean"])
-        # candidates are graded sequentially; benchmarks and ablations are scored
-        # on every gate, to record where an alternative mechanism breaks
-        role = getattr(model, "role", "candidate")
-        res = evaluate_candidate(
+        role = spec.role.value
+        res = evaluate_model(
             model,
             n,
             thr,
@@ -60,7 +64,9 @@ def stage_evaluate(context: PipelineContext | None = None) -> None:
             fold_n_paths=N_PATHS_FOLD,
             folds=folds,
             idc_envelope=state.get("idc_envelope"),
-            stop_at_first_failure=(role == "candidate"),
+            stop_at_first_failure=spec.stop_at_first_failure,
+            role=role,
+            rung=spec.ladder_rung,
             alpha=cal,
         )
         res["key"] = name

@@ -15,9 +15,9 @@ from .config import (
     N_PATHS_RECONSTRUCT,
     N_PATHS_SCALING,
     RECONSTRUCT_ALPHAS,
-    RUNG_KEYS,
     SEED,
 )
+from .model_registry import FIT_TARGETS
 
 SEREN_TRACE_SHA256 = "747854c73ce8b3263b764aa9ff8d866d89903705d31fcd0e0520c33dd14af9a1"
 
@@ -36,7 +36,8 @@ _RESOLVED_CONFIG = {
         "scaling": N_PATHS_SCALING,
     },
     "reconstruct_alphas": RECONSTRUCT_ALPHAS,
-    "rung_keys": RUNG_KEYS,
+    # Keep the legacy field name so existing run fingerprints remain stable.
+    "rung_keys": dict(FIT_TARGETS),
 }
 
 DEFAULT_RUN_SPEC = RunSpec(

@@ -7,7 +7,7 @@ import pandas as pd
 from scipy.optimize import brentq
 
 from ..bootstrap import bootstrap_metric_envelope
-from ..evaluation import benchmark_table, evaluate_candidate
+from ..evaluation import benchmark_table, evaluate_model
 from ..metrics import (
     HOURLY_ACF_LAG_WEIGHTS,
     acf,
@@ -239,7 +239,7 @@ def main(
     for label, build in candidates:
         t = time.time()
         model = build(surrogate)
-        res = evaluate_candidate(
+        res = evaluate_model(
             model, surrogate, busy_threshold, envelope, n_paths=n_paths, seed=seed + 1
         )
         res["label"] = label

@@ -16,30 +16,6 @@ N_PATHS_HORIZON = 400  # sized for usable quantiles, not for tight means
 # never a single seed.
 CERTIFY_SEEDS = 10
 
-# CLI name -> state key. Rungs 2-4b, then the benchmarks (`onoff`, `ingarch`)
-# and the ablation (`nogate`); none of the three can win selection.
-RUNG_KEYS = {
-    "r2": "r2",
-    "r3": "r3",
-    "r4": "r4",
-    "gated": "gated",
-    "mm": "gated_mm",
-    "gated_mm": "gated_mm",
-    "mm2": "gated_mm2",
-    "gated_mm2": "gated_mm2",
-    "mm3": "gated_mm3",
-    "gated_mm3": "gated_mm3",
-    "mm4": "gated_mm4",
-    "gated_mm4": "gated_mm4",
-    "mm5": "gated_mm5",
-    "gated_mm5": "gated_mm5",
-    "onoff": "onoff",
-    "onoff_pois": "onoff_pois",
-    "ingarch": "ingarch",
-    "ingarch_mle": "ingarch_mle",
-    "nogate": "gated_nogate",
-}
-
 # rung 4b knobs controlling burst texture at fixed marginals. Tuned against
 # gate 5, which is therefore in-sample for `mm4`.
 MM4_KNOBS = {"kappa": 40.0, "sigma_fast": 0.60, "tau_fast_bins": 0.5}

@@ -1,4 +1,3 @@
-from .candidates import benchmark_table, evaluate_candidate, summary_scores
 from .folds import FOLD_CORE_METRICS, evaluate_on_folds, scale_support
 from .gates import (
     GateEvidence,
@@ -9,6 +8,7 @@ from .gates import (
     scaling_drift_gate,
 )
 from .horizon import HORIZON_DAYS, horizon_distribution
+from .models import ModelEvaluation, benchmark_table, evaluate_model, summary_scores
 from .recovery import parameter_recovery
 
 __all__ = [
@@ -17,8 +17,9 @@ __all__ = [
     "GateReport",
     "GateResult",
     "HORIZON_DAYS",
+    "ModelEvaluation",
     "benchmark_table",
-    "evaluate_candidate",
+    "evaluate_model",
     "evaluate_gates",
     "evaluate_on_folds",
     "fold_stability_gate",

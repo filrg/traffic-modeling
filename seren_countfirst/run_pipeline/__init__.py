@@ -10,10 +10,10 @@ from .config import (
     N_PATHS_RECONSTRUCT,
     N_PATHS_SCALING,
     RECONSTRUCT_ALPHAS,
-    RUNG_KEYS,
     SEED,
 )
 from .context import PipelineContext, PortableStateStore, StateStore, default_context
+from .model_registry import CANDIDATE_KEYS, CANDIDATE_SPECS, FIT_TARGETS, MODEL_SPECS
 from .spec import DEFAULT_RUN_SPEC
 from .registry import (
     REPRODUCTION_STEPS,
@@ -48,8 +48,11 @@ __all__ = [
     "N_PATHS_RECONSTRUCT",
     "N_PATHS_SCALING",
     "RECONSTRUCT_ALPHAS",
-    "RUNG_KEYS",
     "SEED",
+    "CANDIDATE_KEYS",
+    "CANDIDATE_SPECS",
+    "FIT_TARGETS",
+    "MODEL_SPECS",
     "PipelineContext",
     "PortableStateStore",
     "REPRODUCTION_STEPS",

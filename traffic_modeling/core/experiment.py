@@ -12,7 +12,7 @@ _IDENTIFIER = re.compile(r"[a-z0-9]+(?:[._-][a-z0-9]+)*")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
-def _validate_identifier(value: str, field: str) -> None:
+def validate_identifier(value: str, field: str) -> None:
     if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
         raise ValueError(
             f"{field} must be a lowercase identifier containing letters, digits, '.', '_' or '-': "
@@ -87,7 +87,7 @@ class DatasetRef:
 
     def __post_init__(self) -> None:
         for field in ("provider", "dataset", "version", "subset", "split"):
-            _validate_identifier(getattr(self, field), field)
+            validate_identifier(getattr(self, field), field)
         _validate_sha256(self.content_hash, "content_hash")
 
     @property
@@ -129,7 +129,7 @@ class ModelRef:
 
     def __post_init__(self) -> None:
         for field in ("framework", "algorithm", "variant"):
-            _validate_identifier(getattr(self, field), field)
+            validate_identifier(getattr(self, field), field)
 
     @property
     def key(self) -> str:
@@ -166,7 +166,7 @@ class RunSpec:
             raise TypeError("dataset must be a DatasetRef")
         if not isinstance(self.model, ModelRef):
             raise TypeError("model must be a ModelRef")
-        _validate_identifier(self.evaluation_suite, "evaluation_suite")
+        validate_identifier(self.evaluation_suite, "evaluation_suite")
         if (
             isinstance(self.seed, bool)
             or not isinstance(self.seed, int)

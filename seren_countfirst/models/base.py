@@ -116,11 +116,11 @@ class FitReport:
 
 
 class CountModel:
-    """Interface shared by every rung of the ladder."""
+    """Interface shared by candidate, baseline and ablation count models."""
 
     name = "base"
     rung: object = -1
-    # "candidate" competes for selection; "benchmark" is reported but never chosen
+    # Compatibility metadata for existing artifacts; registries own selection policy.
     role = "candidate"
 
     def __init__(self) -> None:

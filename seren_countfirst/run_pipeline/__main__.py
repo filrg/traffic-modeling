@@ -8,7 +8,7 @@ from .context import PipelineContext
 USAGE = """usage: python -m seren_countfirst.run_pipeline <stage> [<stage> ...]
 
     data                      ingest the trace, verify the audit facts
-    fit <rung> [<rung> ...]   fit or calibrate ladder rungs
+    fit <model> [<model> ...] fit candidates, baselines or ablations
     evaluate                  score candidates, pick the winner
     scaling                   load-scaling sweep and the full gate table
     certify                   the full gate table over CERTIFY_SEEDS seeds
@@ -35,7 +35,7 @@ def main(argv: list[str], context: PipelineContext | None = None) -> None:
     if unknown:
         raise SystemExit(f"unknown stage(s) {unknown}; expected from {sorted(STAGES)}")
     if "fit" in argv[1:]:
-        raise SystemExit("`fit` takes rung arguments, so it must be run on its own")
+        raise SystemExit("`fit` takes model arguments, so it must be run on its own")
     for name in argv:
         STAGES[name]([], context)
 
