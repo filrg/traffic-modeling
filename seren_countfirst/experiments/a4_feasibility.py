@@ -137,7 +137,8 @@ def calibrate_surrogate(
 
 def _gated_moment(x: np.ndarray):
     """Build rung 4b by moments, matching how the production model is calibrated."""
-    from ..run_pipeline import LONG_ACF_LAGS, MM4_KNOBS, SEED
+    from ..candidates import LONG_ACF_LAGS, MM4_TEXTURE
+    from ..run_pipeline import SEED
 
     bm = base_marginals(x)
     return NBGatedLatent.calibrate_debiased(
@@ -148,7 +149,7 @@ def _gated_moment(x: np.ndarray):
         acf_long={int(h): float(v) for h, v in acf(x, LONG_ACF_LAGS).items()},
         n_bins=len(x),
         seed=SEED,
-        **MM4_KNOBS,
+        **MM4_TEXTURE.to_dict(),
     )
 
 

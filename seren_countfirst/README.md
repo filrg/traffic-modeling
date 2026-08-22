@@ -20,7 +20,8 @@ They meet only in the `workload` stage through `jobsize.folds.assign_work`.
 
 | location | responsibility |
 |---|---|
-| `models/` | proposed count models and shared mathematical primitives: NB2, AR(1), IID, latent-AR and gated latent models |
+| `candidates/` | candidate-family definitions; `gli_nb.py` owns typed GLI-NB variants, scientific knobs and builders |
+| `models/` | count-model implementations and shared mathematical primitives: NB2, AR(1), IID, latent-AR and gated latent models |
 | `baselines/` | comparison algorithms, their immutable specifications and fit/calibration builders |
 | `evaluation/` | the shared metric, fold and eight-gate evaluation harness used by every model role |
 | `jobsize/` | duration-to-work inversion, size laws, dependence structure and rolling-origin validation |
@@ -53,6 +54,12 @@ The three roles are separate by construction:
 All three use `evaluation.evaluate_model`, so dataset views, folds, seeds,
 metrics and gate tolerances stay comparable. Serialized `role` values remain for
 artifact compatibility; registry membership owns selection policy.
+
+Each GLI-NB variant is one immutable record under `candidates/gli_nb.py`. That
+record binds its model identity, implementation, calibration route, fit budget
+and optional burst texture. `run_pipeline/candidate_registry.py` only composes
+candidate families; a future algorithm can be added as another family module
+without extending a string-based `if/else` chain.
 
 ## Pipeline structure
 

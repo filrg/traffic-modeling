@@ -16,14 +16,6 @@ N_PATHS_HORIZON = 400  # sized for usable quantiles, not for tight means
 # never a single seed.
 CERTIFY_SEEDS = 10
 
-# rung 4b knobs controlling burst texture at fixed marginals. Tuned against
-# gate 5, which is therefore in-sample for `mm4`.
-MM4_KNOBS = {"kappa": 40.0, "sigma_fast": 0.60, "tau_fast_bins": 0.5}
-
-# base-bin lags the two-scale calibration targets: many and widely spread, so
-# the long scale fits the ACF envelope rather than any single lag.
-LONG_ACF_LAGS = (24, 48, 96, 192, 288, 384, 672)
-
 # hard verification targets for the data stage; a mismatch stops the run
 AUDIT = {
     "n_sft_jobs": 66971,

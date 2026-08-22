@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from traffic_modeling.core import DatasetRef, ModelRef, RunSpec, config_fingerprint
 
+from ..candidates import LONG_ACF_LAGS, MM4_TEXTURE
 from ..data import BASE_FREQ
 from .config import (
     AUDIT,
     CERTIFY_SEEDS,
     FOLD_KWARGS,
-    LONG_ACF_LAGS,
-    MM4_KNOBS,
     N_PATHS_EVAL,
     N_PATHS_FOLD,
     N_PATHS_HORIZON,
@@ -27,7 +26,7 @@ _RESOLVED_CONFIG = {
     "certify_seeds": CERTIFY_SEEDS,
     "folds": FOLD_KWARGS,
     "long_acf_lags": LONG_ACF_LAGS,
-    "mm4_knobs": MM4_KNOBS,
+    "mm4_knobs": MM4_TEXTURE.to_dict(),
     "n_paths": {
         "evaluation": N_PATHS_EVAL,
         "fold": N_PATHS_FOLD,
