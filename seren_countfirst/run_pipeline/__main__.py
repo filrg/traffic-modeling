@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import sys
+import time
+from datetime import datetime, timezone
 
-from .context import PipelineContext
-from .registry import STAGE_SPECS, STAGES, plan_stages, validate_stage_order
+from traffic_modeling.core import StageExecution, StageInvocation, StageStatus
+
+from ..provenance import runtime_environment, source_revision
+from .context import PipelineContext, resolve_context
+from .manifest import prepare_manifest, record_execution
+from .registry import STAGE_SPECS, plan_stages, validate_stage_order
 
 USAGE = """usage:
     python -m seren_countfirst.run_pipeline <stage> [<stage> ...]
@@ -45,20 +51,59 @@ def _print_plan(targets: list[str]) -> None:
         print(f"  {index:>2}. {name:<14} [{kind}; requires: {dependencies}]")
 
 
+def _run_stage(name: str, arguments: list[str], context: PipelineContext) -> None:
+    invocation = StageInvocation(name, tuple(arguments))
+    prepare_manifest(context)
+    revision, dirty = source_revision()
+    started_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    started = time.perf_counter()
+    try:
+        STAGE_SPECS[name].run(arguments, context)
+    except BaseException as exc:
+        execution = StageExecution(
+            invocation=invocation,
+            status=StageStatus.FAILED,
+            started_utc=started_utc,
+            elapsed_seconds=time.perf_counter() - started,
+            environment=runtime_environment(),
+            code_revision=revision,
+            working_tree_dirty=dirty,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        try:
+            record_execution(context, execution)
+        except Exception as manifest_error:
+            exc.add_note(f"could not record failed execution: {manifest_error}")
+        raise
+    record_execution(
+        context,
+        StageExecution(
+            invocation=invocation,
+            status=StageStatus.SUCCEEDED,
+            started_utc=started_utc,
+            elapsed_seconds=time.perf_counter() - started,
+            environment=runtime_environment(),
+            code_revision=revision,
+            working_tree_dirty=dirty,
+        ),
+    )
+
+
 def main(argv: list[str], context: PipelineContext | None = None) -> None:
     if not argv:
         raise SystemExit(USAGE)
     if argv[0] == "--plan":
         _print_plan(argv[1:])
         return
-    if argv[0] not in STAGES:
+    if argv[0] not in STAGE_SPECS:
         raise SystemExit(USAGE)
+    runtime = resolve_context(context)
     if argv[0] == "fit":
-        STAGES["fit"](argv[1:], context)
+        _run_stage("fit", argv[1:], runtime)
         return
-    unknown = [s for s in argv if s not in STAGES]
+    unknown = [s for s in argv if s not in STAGE_SPECS]
     if unknown:
-        raise SystemExit(f"unknown stage(s) {unknown}; expected from {sorted(STAGES)}")
+        raise SystemExit(f"unknown stage(s) {unknown}; expected from {sorted(STAGE_SPECS)}")
     if "fit" in argv[1:]:
         raise SystemExit("`fit` takes model arguments, so it must be run on its own")
     try:
@@ -66,7 +111,7 @@ def main(argv: list[str], context: PipelineContext | None = None) -> None:
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     for name in argv:
-        STAGES[name]([], context)
+        _run_stage(name, [], runtime)
 
 
 def cli() -> None:

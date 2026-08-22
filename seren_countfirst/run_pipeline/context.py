@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from traffic_modeling.core import RunSpec
+from traffic_modeling.core import RunSpec, config_fingerprint
 from traffic_modeling.datasets import (
     DatasetAdapter,
     DatasetCapability,
@@ -15,7 +16,7 @@ from traffic_modeling.datasets import (
 from ..paths import RESULTS, STATE_DIR, TRACE_CSV
 from ..state import PipelineState, load_portable_state, save_portable_state
 from .config import SEED
-from .spec import DEFAULT_RUN_SPEC
+from .spec import DEFAULT_RUN_SPEC, resolved_config
 
 
 class StateStore(Protocol):
@@ -46,6 +47,7 @@ class PipelineContext:
     state_store: StateStore
     seed: int = SEED
     run_spec: RunSpec | None = None
+    resolved_config: Mapping[str, object] | None = None
     dataset_adapter: DatasetAdapter = field(default_factory=SerenDatasetAdapter)
 
     def __post_init__(self) -> None:
@@ -53,6 +55,11 @@ class PipelineContext:
             raise ValueError(
                 f"context seed {self.seed} does not match RunSpec seed {self.run_spec.seed}"
             )
+        if self.resolved_config is not None:
+            if self.run_spec is None:
+                raise ValueError("resolved_config requires a RunSpec")
+            if config_fingerprint(self.resolved_config) != self.run_spec.config_hash:
+                raise ValueError("resolved_config does not match RunSpec config_hash")
 
     @classmethod
     def for_run(
@@ -62,6 +69,7 @@ class PipelineContext:
         results: Path,
         state_store: StateStore,
         run_spec: RunSpec,
+        resolved_config: Mapping[str, object],
         dataset_adapter: DatasetAdapter | None = None,
     ) -> PipelineContext:
         return cls(
@@ -70,6 +78,7 @@ class PipelineContext:
             state_store=state_store,
             seed=run_spec.seed,
             run_spec=run_spec,
+            resolved_config=resolved_config,
             dataset_adapter=(
                 dataset_adapter if dataset_adapter is not None else SerenDatasetAdapter()
             ),
@@ -101,6 +110,7 @@ def default_context() -> PipelineContext:
         results=RESULTS,
         state_store=PortableStateStore(STATE_DIR),
         run_spec=DEFAULT_RUN_SPEC,
+        resolved_config=resolved_config(),
     )
 
 

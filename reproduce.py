@@ -95,16 +95,16 @@ def main() -> None:
 
     t0 = time.time()
     log = run(args.into, args.quick)
-    manifest = {
+    report = {
         "environment": environment(),
         "quick": args.quick,
         "total_seconds": round(time.time() - t0, 1),
         "stages": log,
+        "run_manifest": "run_manifest.json",
     }
-    write_json(manifest, args.into / "run_manifest.json")
-    print(
-        f"\nwrote {args.into / 'run_manifest.json'}; {manifest['total_seconds'] / 60:.0f} min total"
-    )
+    report_path = args.into / "reproduction_report.json"
+    write_json(report, report_path)
+    print(f"\nwrote {report_path}; {report['total_seconds'] / 60:.0f} min total")
 
     if args.verify:
         print(f"\ndiffing {args.into} against {REPO / 'results'}:")

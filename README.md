@@ -63,6 +63,12 @@ assumed to already exist in that state. When several stages are listed,
 requested dependencies must appear first. `fit` takes model names, so it runs
 on its own.
 
+Executed invocations append a validated `run_manifest.json` under the selected
+results directory. It records the immutable run identity, resolved configuration,
+status, timing, runtime versions and source revision. `--plan` remains read-only;
+`reproduce.py` writes its outer timing summary separately as
+`reproduction_report.json`. Artifact checksums and safe resume are not enabled yet.
+
 Generating a workload directly:
 
 ```python
@@ -87,7 +93,7 @@ Paths resolve relative to the repository and are environment-overridable:
 | variable | default | holds |
 |---|---|---|
 | `SEREN_TRACE_CSV` | `./trace_seren.csv` | the raw trace |
-| `SEREN_RESULTS` | `./results` | exported tables and the model card |
+| `SEREN_RESULTS` | `./results` | exported tables, the model card and run manifest |
 | `SEREN_STATE_DIR` | `./results/state_portable_data/state_portable` | resumable pipeline state |
 
 To run without touching an existing results directory:
@@ -111,10 +117,10 @@ SEREN_RESULTS=$PWD/results_scratch python -m seren_countfirst.run_pipeline evalu
 | `seren_countfirst/state.py` | the typed, resumable pipeline state as npy, csv and json; never pickle |
 | `seren_countfirst/artifacts.py` | atomic CSV, JSON and NPY writers used by the pipeline |
 | `seren_countfirst/ensemble.py` | which simulated run is representative, and how one is redrawn at another load |
-| `seren_countfirst/run_pipeline/` | the staged CLI with a central registry and injectable runtime context |
+| `seren_countfirst/run_pipeline/` | staged orchestration, registries, runtime context and manifest persistence |
 | `seren_countfirst/experiments/` | standalone feasibility studies |
 | `seren_countfirst/tests/` | harness invariants and numerical regression pins |
-| `traffic_modeling/core/` | dataset, model and run identities shared by future implementations |
+| `traffic_modeling/core/` | dataset/model/run identities and typed execution-manifest records |
 | `traffic_modeling/datasets/` | canonical trace contracts, capabilities and provider adapters |
 | `figures/code/` | the manuscript figures; `make_all.py` renders every one |
 

@@ -12,7 +12,7 @@ from .config import (
 )
 from .context import PipelineContext, PortableStateStore, StateStore, default_context
 from .model_registry import CANDIDATE_KEYS, CANDIDATE_SPECS, FIT_TARGETS, MODEL_SPECS
-from .spec import DEFAULT_RUN_SPEC
+from .spec import DEFAULT_RUN_SPEC, resolved_config
 from .registry import (
     REPRODUCTION_STEPS,
     STAGE_SPECS,
@@ -76,4 +76,5 @@ __all__ = [
     "stage_workload",
     "validate_stage_graph",
     "validate_stage_order",
+    "resolved_config",
 ]

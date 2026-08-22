@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 from traffic_modeling.core import DatasetRef, ModelRef, RunSpec, config_fingerprint
 
 from ..candidates import LONG_ACF_LAGS, MM4_TEXTURE
@@ -20,7 +22,7 @@ from .model_registry import FIT_TARGETS
 
 SEREN_TRACE_SHA256 = "747854c73ce8b3263b764aa9ff8d866d89903705d31fcd0e0520c33dd14af9a1"
 
-_RESOLVED_CONFIG = {
+_RESOLVED_CONFIG: dict[str, object] = {
     "audit": AUDIT,
     "base_frequency": BASE_FREQ,
     "certify_seeds": CERTIFY_SEEDS,
@@ -38,6 +40,12 @@ _RESOLVED_CONFIG = {
     # Keep the legacy field name so existing run fingerprints remain stable.
     "rung_keys": dict(FIT_TARGETS),
 }
+
+
+def resolved_config() -> dict[str, object]:
+    """Return an isolated snapshot of the default run configuration."""
+    return deepcopy(_RESOLVED_CONFIG)
+
 
 DEFAULT_RUN_SPEC = RunSpec(
     dataset=DatasetRef(

@@ -25,7 +25,7 @@ They meet only in the `workload` stage through `jobsize.folds.assign_work`.
 | `baselines/` | comparison algorithms, their immutable specifications and fit/calibration builders |
 | `evaluation/` | the shared metric, fold and eight-gate evaluation harness used by every model role |
 | `jobsize/` | duration-to-work inversion, size laws, dependence structure and rolling-origin validation |
-| `run_pipeline/` | CLI orchestration, stage/model registries, run context, seed streams and study configuration |
+| `run_pipeline/` | CLI orchestration, registries, run context, manifest persistence, seed streams and study configuration |
 | `experiments/` | standalone diagnostic studies that are not production pipeline stages |
 
 The root modules provide reusable domain or infrastructure functions:
@@ -41,7 +41,7 @@ The root modules provide reusable domain or infrastructure functions:
 | `artifacts.py` | atomic CSV, JSON and NPY writers |
 | `ensemble.py` | representative-run selection and reproducible redraws for figures |
 | `paths.py` | environment-overridable compatibility paths |
-| `provenance.py` | interpreter, dependency and platform metadata |
+| `provenance.py` | interpreter/dependency metadata and Git source revision |
 
 ## Model roles
 
@@ -85,6 +85,9 @@ algorithm baselines live under `baselines/` and are fitted through the regular
 
 Scientific calculations stay in domain modules. Stage modules load inputs, call
 those calculations and write artifacts through an injected `PipelineContext`.
+The orchestration boundary records each stage invocation in `run_manifest.json`;
+`fit mm4` and `fit r2` are distinct records. This is execution provenance, not
+safe resume: output artifact hashes are deliberately deferred to the next layer.
 
 ## Job size
 

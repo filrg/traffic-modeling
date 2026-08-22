@@ -1,4 +1,5 @@
 from .experiment import DatasetRef, ModelRef, RunSpec, config_fingerprint
+from .manifest import RunManifest, StageExecution, StageInvocation, StageStatus
 from .modeling import (
     AblationSpec,
     BaselineSpec,
@@ -19,7 +20,11 @@ __all__ = [
     "ModelRef",
     "ModelRole",
     "ModelSpec",
+    "RunManifest",
     "RunSpec",
+    "StageExecution",
+    "StageInvocation",
+    "StageStatus",
     "config_fingerprint",
     "fit_alias_registry",
     "model_spec_registry",
