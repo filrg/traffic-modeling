@@ -212,21 +212,27 @@ _STRUCT: dict = {}
 def _structure() -> tuple:
     """Return the frozen law, the trace's jobs, and the batch arrays it draws on."""
     if not _STRUCT:
-        from seren_countfirst.data import arrival_view, jobsize_view, load_trace
         from seren_countfirst.jobsize import (
+            JOBSIZE_STATES,
             attach_activity,
             batch_frame,
             bin_grid_index,
             jobsize_table,
             read_two_part_jobsize,
         )
-        from seren_countfirst.paths import TRACE_CSV
+        from seren_countfirst.run_pipeline.context import default_context
+        from traffic_modeling.datasets import DatasetCapability
 
         model = read_two_part_jobsize(
             C.RESULTS / "jobsize_two_part.json", C.RESULTS / "jobsize_pool.npz"
         )
-        raw = load_trace(TRACE_CSV)
-        jobs = attach_activity(jobsize_table(jobsize_view(raw, "SFT")), arrival_view(raw, "SFT"))
+        dataset = default_context().load_dataset(
+            DatasetCapability.ARRIVAL_EVENTS,
+            DatasetCapability.JOB_STATES,
+            DatasetCapability.EXECUTION_DURATIONS,
+            DatasetCapability.GPU_COUNTS,
+        )
+        jobs = attach_activity(jobsize_table(dataset.jobs_in_states(JOBSIZE_STATES)), dataset.jobs)
         batches = batch_frame(jobs)
         card = batches["cardinality"].to_numpy(dtype=int)
         _STRUCT["value"] = (

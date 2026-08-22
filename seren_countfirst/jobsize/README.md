@@ -12,7 +12,7 @@ to round-trip.
 
 | module | holds |
 |---|---|
-| `work.py` | the A100 inversion, the activity attachment, the batch and bin index helpers |
+| `work.py` | canonical job-state scope, the A100 inversion, activity attachment, and batch/bin helpers |
 | `laws.py` | the marginal laws: lognormal mixture, the scipy candidates, the empirical pool, and their json readers |
 | `latent.py` | `SizeLatent`, a two-scale stationary bin level, and the within-batch variance it is calibrated against |
 | `composition.py` | `CompositionJobSize` — the frozen bulk law: the component belongs to the job, and activity moves the weights, not the level |

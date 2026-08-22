@@ -12,10 +12,10 @@ from scipy import stats
 from traffic_modeling.datasets import DatasetCapability
 
 from ...artifacts import write_csv
-from ...data import JOBSIZE_STATES
 from ...jobsize import (
     ConditionalJobSize,
     EmpiricalJobSize,
+    JOBSIZE_STATES,
     LogNormalMixture,
     ScipyJobSize,
     TAIL_QUANTILE,

@@ -6,8 +6,7 @@ import pandas as pd
 from traffic_modeling.datasets import DatasetCapability
 
 from ...artifacts import write_csv
-from ...data import JOBSIZE_STATES
-from ...jobsize import attach_activity, fold_report, jobsize_table
+from ...jobsize import JOBSIZE_STATES, attach_activity, fold_report, jobsize_table
 from ..config import FOLD_KWARGS
 from ..context import PipelineContext, resolve_context
 

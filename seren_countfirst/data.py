@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Mapping, cast
 
 import numpy as np
 import pandas as pd
-from traffic_modeling.datasets import sha256_file as _sha256_file
 
 BASE_FREQ = "15min"
 BASE_BIN_S = 900.0
@@ -22,39 +20,6 @@ SCALES: dict[str, int] = {
     "4d": 384,
     "7d": 672,
 }
-
-# A size is the work the cluster absorbed, arrivals keep every state.
-JOBSIZE_STATES = ("COMPLETED", "FAILED", "CANCELLED")
-
-
-def sha256_file(path: str | Path, chunk: int = 1 << 20) -> str:
-    """Compatibility wrapper around the shared dataset-integrity helper."""
-    return _sha256_file(path, chunk_size=chunk)
-
-
-def load_trace(csv_path: str | Path) -> pd.DataFrame:
-    """Load the raw trace and parse timestamps in their native timezone."""
-    raw = pd.read_csv(csv_path, low_memory=False)
-    for col in ("submit_time", "start_time", "end_time"):
-        if col in raw.columns:
-            raw[col + "_dt"] = pd.to_datetime(raw[col], errors="coerce")
-    return raw
-
-
-def arrival_view(raw: pd.DataFrame, job_type: str = "SFT") -> pd.DataFrame:
-    """Return every valid submission of the target type, stable-sorted.
-
-    Failed, cancelled and preempted submissions are kept.
-    """
-    view = raw.loc[raw["type"].eq(job_type)].copy()
-    view = view.sort_values(["submit_time_dt", "job_id"], kind="stable")
-    return view.reset_index(drop=True)
-
-
-def jobsize_view(raw: pd.DataFrame, job_type: str = "SFT") -> pd.DataFrame:
-    """Return the jobs whose runtime is work the cluster had to absorb."""
-    view = arrival_view(raw, job_type)
-    return view.loc[view["state"].isin(JOBSIZE_STATES)].reset_index(drop=True)
 
 
 @dataclass
@@ -88,13 +53,13 @@ class BatchTable:
         )
 
 
-def build_batches(view: pd.DataFrame, time_col: str = "submit_time_dt") -> BatchTable:
+def build_batches(view: pd.DataFrame, time_col: str = "submitted_at") -> BatchTable:
     """Group jobs that share an exact timestamp into one batch."""
     grouped = view.groupby(time_col, sort=True).size()
     return BatchTable(times=pd.DatetimeIndex(grouped.index), sizes=grouped.to_numpy(dtype=int))
 
 
-def zero_iat_fraction(view: pd.DataFrame, time_col: str = "submit_time_dt") -> float:
+def zero_iat_fraction(view: pd.DataFrame, time_col: str = "submitted_at") -> float:
     iat = view[time_col].diff().dt.total_seconds().to_numpy()[1:]
     return float(np.mean(iat == 0)) if len(iat) else np.nan
 

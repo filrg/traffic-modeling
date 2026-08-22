@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .work import (
     F_MAX,
+    JOBSIZE_STATES,
     attach_activity,
     batch_frame,
     bin_grid_index,
@@ -43,6 +44,7 @@ __all__ = [
     "ConditionalJobSize",
     "EmpiricalJobSize",
     "F_MAX",
+    "JOBSIZE_STATES",
     "LogNormalMixture",
     "SCIPY_CANDIDATES",
     "ScipyJobSize",

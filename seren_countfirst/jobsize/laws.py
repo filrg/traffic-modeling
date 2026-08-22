@@ -272,10 +272,9 @@ class EmpiricalJobSize:
 
     @classmethod
     def from_table(cls, table: pd.DataFrame) -> "EmpiricalJobSize":
-        gpu_column = "gpu_count" if "gpu_count" in table.columns else "gpu_num"
         return cls(
             sizes=table["job_size"].to_numpy(dtype=float),
-            gpus=table[gpu_column].to_numpy(dtype=float),
+            gpus=table["gpu_count"].to_numpy(dtype=float),
         )
 
     def replay(self) -> tuple[np.ndarray, np.ndarray]:

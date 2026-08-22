@@ -7,7 +7,7 @@ import pandas as pd
 from scipy import optimize
 from scipy.special import logsumexp
 
-from .work import _stream_activity, submission_column
+from .work import _stream_activity
 from .laws import LogNormalMixture, _lognormal_mean_below, _normal_below
 
 
@@ -80,8 +80,7 @@ class CompositionJobSize:
         # once every job is assigned the component it most likely came from
         label = np.argmax(resp, axis=1)
         frame = jobs.assign(_c=label, _z=z)
-        submitted_at = submission_column(frame)
-        key = ["bin", submitted_at]
+        key = ["bin", "submitted_at"]
         modal = frame.groupby(key)["_c"].transform(lambda s: s.mode().iat[0])
         escape = float(np.mean(label != modal.to_numpy()))
 

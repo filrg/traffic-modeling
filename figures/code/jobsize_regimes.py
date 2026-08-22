@@ -77,12 +77,17 @@ def _mean_weights(bulk) -> np.ndarray:
 
 def _trace_jobs():
     """Return every sized job with its bin and that bin's batch count."""
-    from seren_countfirst.data import arrival_view, jobsize_view, load_trace
-    from seren_countfirst.jobsize import attach_activity, jobsize_table
-    from seren_countfirst.paths import TRACE_CSV
+    from seren_countfirst.jobsize import JOBSIZE_STATES, attach_activity, jobsize_table
+    from seren_countfirst.run_pipeline.context import default_context
+    from traffic_modeling.datasets import DatasetCapability
 
-    raw = load_trace(TRACE_CSV)
-    return attach_activity(jobsize_table(jobsize_view(raw, "SFT")), arrival_view(raw, "SFT"))
+    dataset = default_context().load_dataset(
+        DatasetCapability.ARRIVAL_EVENTS,
+        DatasetCapability.JOB_STATES,
+        DatasetCapability.EXECUTION_DURATIONS,
+        DatasetCapability.GPU_COUNTS,
+    )
+    return attach_activity(jobsize_table(dataset.jobs_in_states(JOBSIZE_STATES)), dataset.jobs)
 
 
 def _activity_bins(activity: np.ndarray) -> tuple:

@@ -9,7 +9,7 @@ import pandas as pd
 from scipy import optimize
 from scipy.special import logsumexp
 
-from .work import batch_frame, bin_grid_index, submission_column
+from .work import batch_frame, bin_grid_index
 
 if TYPE_CHECKING:
     from .laws import LogNormalMixture
@@ -24,7 +24,7 @@ def within_batch_variance(jobs: pd.DataFrame, beta: float, mix: LogNormalMixture
     multi-job batch fall back to the pooled variance.
     """
     z = np.log(jobs["job_size"].to_numpy(dtype=float))
-    key = ["bin", submission_column(jobs)]
+    key = ["bin", "submitted_at"]
     grouped = jobs.assign(z=z).groupby(key, sort=True)
     dev2 = (z - grouped["z"].transform("mean").to_numpy()) ** 2
     frame = (
