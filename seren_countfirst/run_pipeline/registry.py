@@ -6,6 +6,7 @@ from types import MappingProxyType
 from typing import Protocol
 
 from .context import PipelineContext
+from .model_registry import FIT_TARGETS
 from .stages.baselines import stage_baselines
 from .stages.certify import stage_certify
 from .stages.data import stage_data
@@ -32,12 +33,17 @@ class _ContextStage(Protocol):
     def __call__(self, context: PipelineContext | None = None) -> None: ...
 
 
+class ArgumentValidator(Protocol):
+    def __call__(self, arguments: tuple[str, ...]) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class StageSpec:
     name: str
     run: StageRunner
     depends_on: tuple[str, ...] = ()
     reads_dataset: bool = False
+    argument_validator: ArgumentValidator | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name:
@@ -52,6 +58,19 @@ class StageSpec:
             raise ValueError(f"{self.name} contains duplicate dependencies")
         if not isinstance(self.reads_dataset, bool):
             raise TypeError(f"{self.name}.reads_dataset must be a bool")
+        if self.argument_validator is not None and not callable(self.argument_validator):
+            raise TypeError(f"{self.name}.argument_validator must be callable")
+
+    def validate_arguments(self, arguments: tuple[str, ...]) -> None:
+        if not isinstance(arguments, tuple) or any(
+            not isinstance(argument, str) or not argument for argument in arguments
+        ):
+            raise ValueError(f"stage `{self.name}` arguments must be non-empty strings")
+        if self.argument_validator is None:
+            if arguments:
+                raise ValueError(f"stage `{self.name}` does not accept arguments: {list(arguments)}")
+            return
+        self.argument_validator(arguments)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +96,16 @@ def _with_args(
         function(args, context)
 
     return run
+
+
+def _validate_fit_arguments(arguments: tuple[str, ...]) -> None:
+    if not arguments:
+        raise ValueError("stage `fit` requires at least one model")
+    if len(set(arguments)) != len(arguments):
+        raise ValueError("stage `fit` model arguments must not contain duplicates")
+    unknown = sorted(set(arguments) - set(FIT_TARGETS))
+    if unknown:
+        raise ValueError(f"unknown fit model(s) {unknown}; expected from {sorted(FIT_TARGETS)}")
 
 
 def _resolve_stage_order(
@@ -159,7 +188,12 @@ def _stage_spec_registry(specs: Iterable[StageSpec]) -> Mapping[str, StageSpec]:
 
 _SPECS = (
     StageSpec("data", _without_args("data", stage_data), reads_dataset=True),
-    StageSpec("fit", _with_args(stage_fit), ("data",)),
+    StageSpec(
+        "fit",
+        _with_args(stage_fit),
+        ("data",),
+        argument_validator=_validate_fit_arguments,
+    ),
     StageSpec("evaluate", _without_args("evaluate", stage_evaluate), ("data", "fit")),
     StageSpec("scaling", _without_args("scaling", stage_scaling), ("evaluate",)),
     StageSpec("certify", _without_args("certify", stage_certify), ("evaluate",)),
@@ -216,6 +250,10 @@ def validate_reproduction_steps(
         name = step.argv[0]
         if name not in specs:
             raise ValueError(f"{mode} reproduction contains unknown stage `{name}`")
+        try:
+            specs[name].validate_arguments(tuple(step.argv[1:]))
+        except ValueError as exc:
+            raise ValueError(f"invalid {mode} reproduction invocation: {exc}") from exc
         missing = [
             dependency for dependency in specs[name].depends_on if dependency not in completed
         ]

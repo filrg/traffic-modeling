@@ -12,6 +12,8 @@ from .config import (
 )
 from .context import PipelineContext, PortableStateStore, StateStore, default_context
 from .model_registry import CANDIDATE_KEYS, CANDIDATE_SPECS, FIT_TARGETS, MODEL_SPECS
+from .planning import InvocationRecipe, PlannedInvocation, plan_invocations
+from .recipes import DEFAULT_INVOCATION_RECIPE
 from .spec import DEFAULT_RUN_SPEC, resolved_config
 from .registry import (
     REPRODUCTION_STEPS,
@@ -50,9 +52,12 @@ __all__ = [
     "SEED",
     "CANDIDATE_KEYS",
     "CANDIDATE_SPECS",
+    "DEFAULT_INVOCATION_RECIPE",
     "FIT_TARGETS",
+    "InvocationRecipe",
     "MODEL_SPECS",
     "PipelineContext",
+    "PlannedInvocation",
     "PortableStateStore",
     "REPRODUCTION_STEPS",
     "STAGE_SPECS",
@@ -60,6 +65,7 @@ __all__ = [
     "ReproductionStep",
     "StageSpec",
     "plan_stages",
+    "plan_invocations",
     "StateStore",
     "default_context",
     "stage_baselines",

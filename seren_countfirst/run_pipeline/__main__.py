@@ -15,13 +15,18 @@ from ..provenance import runtime_environment, source_revision
 from .artifact_tracking import ArtifactSnapshot, changed_artifacts, snapshot_artifacts
 from .context import PipelineContext, resolve_context
 from .manifest import prepare_manifest, record_execution
+from .planning import PlannedInvocation, plan_invocations
 from .preflight import capture_inputs, resume_decision
+from .recipes import DEFAULT_INVOCATION_RECIPE
 from .registry import STAGE_SPECS, plan_stages, validate_stage_order
 
 USAGE = """usage:
     python -m seren_countfirst.run_pipeline <stage> [<stage> ...]
     python -m seren_countfirst.run_pipeline --resume <stage> [<stage> ...]
+    python -m seren_countfirst.run_pipeline --with-deps <stage> [<stage> ...]
+    python -m seren_countfirst.run_pipeline --resume --with-deps <stage> [<stage> ...]
     python -m seren_countfirst.run_pipeline --plan <target-stage> [<target-stage> ...]
+    python -m seren_countfirst.run_pipeline --plan --with-deps <stage> [<stage> ...]
 
     data                      ingest the trace, verify the audit facts
     fit <model> [<model> ...] fit candidates, baselines or ablations
@@ -39,6 +44,8 @@ USAGE = """usage:
 `--plan` prints the stage-level dependency closure without executing any stage;
 it accepts stage names, not `fit` model names.
 `--resume` skips only fully verified invocations; a verification miss runs them.
+`--with-deps` resolves omitted dependencies through the concrete reproduction
+recipe. Dependencies are resume-verified; targets run unless `--resume` is set.
 Normal stage commands still use existing portable state for omitted dependencies.
 
 Paths come from paths.py. SEREN_TRACE_CSV, SEREN_RESULTS and SEREN_STATE_DIR
@@ -58,6 +65,71 @@ def _print_plan(targets: list[str]) -> None:
         kind = "target" if name in requested else "dependency"
         dependencies = ", ".join(STAGE_SPECS[name].depends_on) or "none"
         print(f"  {index:>2}. {name:<14} [{kind}; requires: {dependencies}]")
+
+
+def _print_invocation_plan(
+    planned: tuple[PlannedInvocation, ...],
+    *,
+    resume_targets: bool,
+) -> None:
+    print(f"automatic dependency plan ({DEFAULT_INVOCATION_RECIPE.name}):")
+    for index, item in enumerate(planned, start=1):
+        role = "target" if item.requested else "dependency"
+        action = "verify-or-run" if resume_targets or not item.requested else "run"
+        invocation = item.invocation
+        command = " ".join((invocation.stage, *invocation.arguments))
+        print(f"  {index:>2}. {command:<44} [{role}; {action}]")
+
+
+def _parse_execution_options(argv: list[str]) -> tuple[bool, bool, list[str]]:
+    remaining = list(argv)
+    resume = False
+    with_dependencies = False
+    while remaining and remaining[0] in {"--resume", "--with-deps"}:
+        option = remaining.pop(0)
+        if option == "--resume":
+            if resume:
+                raise SystemExit("duplicate option: --resume")
+            resume = True
+        else:
+            if with_dependencies:
+                raise SystemExit("duplicate option: --with-deps")
+            with_dependencies = True
+    if not remaining:
+        raise SystemExit(USAGE)
+    return resume, with_dependencies, remaining
+
+
+def _target_invocations(argv: list[str]) -> tuple[StageInvocation, ...]:
+    if not argv:
+        raise SystemExit(USAGE)
+    if argv[0] not in STAGE_SPECS:
+        raise SystemExit(USAGE)
+    if argv[0] == "fit":
+        invocation = StageInvocation("fit", tuple(argv[1:]))
+        try:
+            STAGE_SPECS["fit"].validate_arguments(invocation.arguments)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        return (invocation,)
+
+    unknown = [stage for stage in argv if stage not in STAGE_SPECS]
+    if unknown:
+        raise SystemExit(f"unknown stage(s) {unknown}; expected from {sorted(STAGE_SPECS)}")
+    if "fit" in argv[1:]:
+        raise SystemExit("`fit` takes model arguments, so it must be run on its own")
+    try:
+        ordered = validate_stage_order(argv, STAGE_SPECS)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    return tuple(StageInvocation(stage) for stage in ordered)
+
+
+def _concrete_plan(targets: tuple[StageInvocation, ...]) -> tuple[PlannedInvocation, ...]:
+    try:
+        return plan_invocations(targets, STAGE_SPECS, DEFAULT_INVOCATION_RECIPE)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def _run_stage(
@@ -142,30 +214,30 @@ def main(argv: list[str], context: PipelineContext | None = None) -> None:
     if not argv:
         raise SystemExit(USAGE)
     if argv[0] == "--plan":
-        _print_plan(argv[1:])
+        plan_arguments = argv[1:]
+        if plan_arguments[:1] == ["--with-deps"]:
+            planned = _concrete_plan(_target_invocations(plan_arguments[1:]))
+            _print_invocation_plan(planned, resume_targets=False)
+        else:
+            _print_plan(plan_arguments)
         return
-    resume = argv[0] == "--resume"
-    if resume:
-        argv = argv[1:]
-        if not argv:
-            raise SystemExit(USAGE)
-    if argv[0] not in STAGE_SPECS:
-        raise SystemExit(USAGE)
+    resume, with_dependencies, argv = _parse_execution_options(argv)
+    targets = _target_invocations(argv)
+    if with_dependencies:
+        planned = _concrete_plan(targets)
+        _print_invocation_plan(planned, resume_targets=resume)
+    else:
+        planned = tuple(PlannedInvocation(invocation, requested=True) for invocation in targets)
+
     runtime = resolve_context(context)
-    if argv[0] == "fit":
-        _run_stage("fit", argv[1:], runtime, resume=resume)
-        return
-    unknown = [s for s in argv if s not in STAGE_SPECS]
-    if unknown:
-        raise SystemExit(f"unknown stage(s) {unknown}; expected from {sorted(STAGE_SPECS)}")
-    if "fit" in argv[1:]:
-        raise SystemExit("`fit` takes model arguments, so it must be run on its own")
-    try:
-        validate_stage_order(argv, STAGE_SPECS)
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
-    for name in argv:
-        _run_stage(name, [], runtime, resume=resume)
+    for item in planned:
+        invocation = item.invocation
+        _run_stage(
+            invocation.stage,
+            list(invocation.arguments),
+            runtime,
+            resume=resume or not item.requested,
+        )
 
 
 def cli() -> None:

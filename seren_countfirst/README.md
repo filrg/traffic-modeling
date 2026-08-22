@@ -43,6 +43,9 @@ The root modules provide reusable domain or infrastructure functions:
 | `paths.py` | legacy paths plus typed RunSpec-to-directory namespace resolution |
 | `provenance.py` | interpreter/dependency metadata and Git source revision |
 | `run_pipeline/artifact_tracking.py` | before/after output discovery and content hashing at the orchestration boundary |
+| `run_pipeline/manifest.py` / `preflight.py` | manifest persistence plus fail-closed input/output verification for safe resume |
+| `run_pipeline/registry.py` | stage contracts, abstract dependency DAG and canonical reproduction steps |
+| `run_pipeline/planning.py` / `recipes.py` | generic concrete-invocation planning plus the Seren/count-first recipe policy |
 
 ## Model roles
 
@@ -79,6 +82,16 @@ stage-level, dependency-first closure without running it. Normal commands may
 omit dependencies when portable state already contains their outputs; if an
 omitted dependency is explicitly listed later in the same command, the CLI
 rejects the unsafe order.
+
+`python -m seren_countfirst.run_pipeline --with-deps evaluate` resolves that
+abstract closure through the Seren/count-first reproduction recipe. It prints
+and executes concrete commands, including every declared `fit ...` invocation.
+Prefix the same request with `--plan --with-deps` to preview those commands
+without resolving runtime paths or executing anything.
+Dependencies are provenance-verified and reused when safe; the requested target
+runs normally. Add `--resume` to allow verified reuse of the target as well.
+Unknown recipe stages, invalid arguments or missing dependency commands fail
+before execution starts.
 
 `run_pipeline/stages/baselines.py` is the historical bootstrap-reference stage;
 algorithm baselines live under `baselines/` and are fitted through the regular

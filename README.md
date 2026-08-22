@@ -55,9 +55,14 @@ python -m seren_countfirst.run_pipeline evaluate scaling horizon reconstruct bas
 
 # inspect everything required for a target without executing it
 python -m seren_countfirst.run_pipeline --plan workload
+python -m seren_countfirst.run_pipeline --plan --with-deps evaluate
 
 # skip only an exact invocation whose full provenance still verifies
 python -m seren_countfirst.run_pipeline --resume evaluate scaling
+
+# resolve and safely execute omitted dependencies from the Seren recipe
+python -m seren_countfirst.run_pipeline --with-deps evaluate
+python -m seren_countfirst.run_pipeline --resume --with-deps workload
 ```
 
 Stages can be invoked independently against portable npy/csv/json state. The
@@ -65,6 +70,11 @@ stage-level dependency planner is inspection-only: omitted prerequisites are
 assumed to already exist in that state. When several stages are listed,
 requested dependencies must appear first. `fit` takes model names, so it runs
 on its own. `--resume fit mm4` matches the arguments as well as the stage name.
+`--with-deps` expands the stage DAG through the concrete full-reproduction
+recipe, prints the invocation plan, and processes shared dependencies once.
+Dependency invocations use verified resume automatically; requested targets run
+normally unless `--resume` is also present. Invalid or missing recipe commands
+fail before any stage runs.
 
 Executed invocations append a validated `run_manifest.json` under the selected
 results directory. It records the immutable run identity, resolved configuration,
@@ -74,8 +84,10 @@ v3 records whether dependency input lineage is complete. `--resume` skips only
 when RunSpec/config, exact invocation, clean Git revision, runtime versions, raw
 dataset, dependency inputs and outputs all verify; otherwise it prints the miss
 reason and runs normally. Manifests v1/v2 remain readable but cannot authorize a
-skip. `--plan` remains read-only; `reproduce.py` writes its outer timing summary
-separately as `reproduction_report.json`.
+skip. `--plan` remains a read-only, stage-level view; `--with-deps` is the opt-in
+execution mode that resolves abstract stages such as `fit` into exact model
+arguments. `reproduce.py` writes its outer timing summary separately as
+`reproduction_report.json`.
 
 Generating a workload directly:
 
