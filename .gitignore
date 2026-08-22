@@ -16,6 +16,7 @@ CLAUDE.md
 results/
 results_check/
 results_*/
+runs/
 
 figures/csv/
 figures/pdf/

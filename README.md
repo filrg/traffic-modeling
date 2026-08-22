@@ -74,10 +74,10 @@ Generating a workload directly:
 
 ```python
 import numpy as np
-from seren_countfirst.state import load_portable_state, rebuild_model
-from seren_countfirst.paths import STATE_DIR
+from seren_countfirst.run_pipeline.context import default_context
+from seren_countfirst.state import rebuild_model
 
-state = load_portable_state(STATE_DIR)
+state = default_context().load_state()
 model = rebuild_model(state["models_json"][state["winner"]])
 
 rng = np.random.default_rng(0)
@@ -96,12 +96,27 @@ Paths resolve relative to the repository and are environment-overridable:
 | `SEREN_TRACE_CSV` | `./trace_seren.csv` | the raw trace |
 | `SEREN_RESULTS` | `./results` | exported tables, the model card and run manifest |
 | `SEREN_STATE_DIR` | `./results/state_portable_data/state_portable` | resumable pipeline state |
+| `SEREN_RUNS_DIR` | unset | opt-in root for RunSpec-isolated results and state |
 
 To run without touching an existing results directory:
 
 ```bash
 SEREN_RESULTS=$PWD/results_scratch python -m seren_countfirst.run_pipeline evaluate
 ```
+
+For multiple datasets, algorithms or configurations, use the namespaced mode:
+
+```bash
+SEREN_RUNS_DIR=$PWD/runs python -m seren_countfirst.run_pipeline data
+```
+
+The actual directory is `SEREN_RUNS_DIR/<dataset identity>/<model identity>/<run-id>/`;
+the default study currently resolves to
+`runs/internlm/acmetrace-seren/unversioned/sft/full/count-first/gli-nb/gated-mm4/<run-id>/`.
+Portable state lives below that same directory. `SEREN_RUNS_DIR` is intentionally
+mutually exclusive with `SEREN_RESULTS` and `SEREN_STATE_DIR`. With none of them
+set, the published `results/` layout remains unchanged. No state is copied or
+silently loaded from legacy `results/` when namespaced mode is selected.
 
 ## Repository map
 

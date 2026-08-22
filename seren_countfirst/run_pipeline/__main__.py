@@ -38,8 +38,8 @@ USAGE = """usage:
 it accepts stage names, not `fit` model names.
 Normal stage commands still use existing portable state for omitted dependencies.
 
-Paths come from paths.py and are overridable by SEREN_TRACE_CSV,
-SEREN_RESULTS and SEREN_STATE_DIR.
+Paths come from paths.py. SEREN_TRACE_CSV, SEREN_RESULTS and SEREN_STATE_DIR
+preserve the legacy layout; SEREN_RUNS_DIR opts into RunSpec-based isolation.
 """
 
 

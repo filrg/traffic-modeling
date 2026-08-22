@@ -40,7 +40,7 @@ The root modules provide reusable domain or infrastructure functions:
 | `state.py` | portable JSON/CSV/NPY state and model reconstruction; never pickle |
 | `artifacts.py` | atomic CSV, JSON and NPY writers |
 | `ensemble.py` | representative-run selection and reproducible redraws for figures |
-| `paths.py` | environment-overridable compatibility paths |
+| `paths.py` | legacy paths plus typed RunSpec-to-directory namespace resolution |
 | `provenance.py` | interpreter/dependency metadata and Git source revision |
 | `run_pipeline/artifact_tracking.py` | before/after output discovery and content hashing at the orchestration boundary |
 
@@ -91,6 +91,13 @@ The orchestration boundary records each stage invocation in `run_manifest.json`;
 also catalogs result/state files created or rewritten by that invocation, using
 portable relative paths, sizes and SHA-256 digests. This is provenance, not safe
 resume: inputs and dependency artifacts are not preflighted before execution.
+
+The default CLI still writes the published compatibility `results/` tree. Set
+`SEREN_RUNS_DIR` to opt into isolated storage derived from the complete
+`RunSpec.namespace`; portable state then stays inside the same run directory.
+The resolver rejects simultaneous legacy path overrides and never falls back to
+legacy state. Figure input resolution uses the same default context, so figures
+do not accidentally mix a namespaced run with published artifacts.
 
 ## Job size
 

@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from seren_countfirst.paths import RESULTS, STATE_DIR
 from seren_countfirst.artifacts import write_csv as atomic_write_csv
 from seren_countfirst.ensemble import (
     DISPLAY_CANDIDATES,
@@ -31,6 +30,13 @@ from seren_countfirst.ensemble import (
     state,
     winner,
 )
+from seren_countfirst.run_pipeline.context import PortableStateStore, default_context
+
+_RUNTIME = default_context()
+RESULTS = _RUNTIME.results
+if not isinstance(_RUNTIME.state_store, PortableStateStore):
+    raise TypeError("figure generation requires a portable filesystem state store")
+STATE_DIR = _RUNTIME.state_store.directory
 
 __all__ = [
     "BINS_PER_DAY",

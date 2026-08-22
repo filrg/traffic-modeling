@@ -46,10 +46,18 @@ def _validate_json(value: object, path: str = "config") -> None:
     raise TypeError(f"{path} contains a non-JSON value: {type(value).__name__}")
 
 
+def _plain_json(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {key: _plain_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain_json(item) for item in value]
+    return value
+
+
 def _canonical_json(value: object) -> str:
     _validate_json(value)
     return json.dumps(
-        value,
+        _plain_json(value),
         allow_nan=False,
         ensure_ascii=False,
         separators=(",", ":"),

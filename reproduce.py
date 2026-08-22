@@ -22,8 +22,16 @@ STAGES: list[tuple[list[str], float, bool]] = [
 ]
 
 
+def _stage_environment(target: Path) -> dict[str, str]:
+    env = dict(os.environ)
+    env.pop("SEREN_RUNS_DIR", None)
+    env.pop("SEREN_STATE_DIR", None)
+    env["SEREN_RESULTS"] = str(target)
+    return env
+
+
 def run(target: Path, quick: bool) -> list[dict]:
-    env = dict(os.environ, SEREN_RESULTS=str(target))
+    env = _stage_environment(target)
     target.mkdir(parents=True, exist_ok=True)
     log = []
     for argv, minutes, skippable in STAGES:

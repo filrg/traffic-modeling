@@ -3,8 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from .metrics import base_marginals
-from .paths import STATE_DIR
-from .state import load_portable_state, rebuild_model
+from .state import rebuild_model
 
 # must equal run_pipeline.config.SEED; a test pins the equality
 SEED = 20260729
@@ -13,7 +12,9 @@ BINS_PER_DAY = 96
 
 def state() -> dict:
     """Load the portable pipeline state."""
-    return load_portable_state(STATE_DIR)
+    from .run_pipeline.context import default_context
+
+    return default_context().load_state()
 
 
 def calibrated(st: dict, key: str) -> tuple:

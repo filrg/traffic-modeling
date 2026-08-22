@@ -13,7 +13,7 @@ from traffic_modeling.datasets import (
     TraceDataset,
 )
 
-from ..paths import RESULTS, STATE_DIR, TRACE_CSV
+from ..paths import TRACE_CSV, resolve_run_paths
 from ..state import PipelineState, load_portable_state, save_portable_state
 from .config import SEED
 from .spec import DEFAULT_RUN_SPEC, resolved_config
@@ -105,10 +105,11 @@ class PipelineContext:
 
 def default_context() -> PipelineContext:
     """Build the filesystem-backed context used by the CLI."""
+    run_paths = resolve_run_paths(DEFAULT_RUN_SPEC)
     return PipelineContext(
         trace_csv=TRACE_CSV,
-        results=RESULTS,
-        state_store=PortableStateStore(STATE_DIR),
+        results=run_paths.results,
+        state_store=PortableStateStore(run_paths.state),
         run_spec=DEFAULT_RUN_SPEC,
         resolved_config=resolved_config(),
     )
