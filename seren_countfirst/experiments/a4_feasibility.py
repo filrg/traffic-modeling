@@ -15,7 +15,8 @@ from ..metrics import (
     hourly_acf1_from_autocov,
     metric_vector,
 )
-from ..models import IIDNegBin, NBLatentAR, NBRegimeSwitch, marginal_feasibility
+from ..baselines import NBRegimeSwitch
+from ..models import IIDNegBin, NBLatentAR, marginal_feasibility
 from ..models import NBGatedLatent
 
 # Seren SFT subset, 15-minute batch counts

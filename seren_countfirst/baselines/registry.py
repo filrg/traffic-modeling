@@ -7,8 +7,10 @@ from types import MappingProxyType
 from traffic_modeling.core import BaselineSpec, EstimationMethod, ModelRef, model_spec_registry
 
 from ..metrics import acf
-from ..models import CountModel, NBINGARCH, ONOFFCounts
+from ..models.base import CountModel
 from ..state import PipelineState
+from .ingarch import NBINGARCH
+from .onoff import ONOFFCounts
 
 ModelBuilder = Callable[[PipelineState, int], CountModel]
 

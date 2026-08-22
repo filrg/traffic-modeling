@@ -7,8 +7,8 @@ from scipy.optimize import minimize
 from scipy.special import expit, logit
 
 from ..metrics import HOURLY_ACF_LAG_WEIGHTS, hourly_acf1_from_autocov
-from .base import CountModel, FitReport
-from .nb import nb2_loglik
+from ..models.base import CountModel, FitReport
+from ..models.nb import nb2_loglik
 
 _EPS = 1e-12
 

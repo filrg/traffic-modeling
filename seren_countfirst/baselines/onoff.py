@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 
 from ..metrics import run_lengths
-from .base import CountModel
-from .nb import nb2_sample
+from ..models.base import CountModel
+from ..models.nb import nb2_sample
 
 _EPS = 1e-9
 

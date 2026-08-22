@@ -213,8 +213,8 @@ def _rebuild_report(fit: dict[str, Any] | None):
 
 def rebuild_model(entry: ModelEntry) -> CountModel:
     """Recreate a model object from its params json; no pickle is involved."""
-    from .models import IIDNegBin, NBINGARCH, NBLatentAR, NBRegimeSwitch, ONOFFCounts
-    from .models import NBGatedLatent
+    from .baselines import NBINGARCH, NBRegimeSwitch, ONOFFCounts
+    from .models import IIDNegBin, NBGatedLatent, NBLatentAR
 
     cls = {
         "IIDNegBin": IIDNegBin,

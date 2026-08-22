@@ -5,10 +5,10 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
-from .ar1 import ar1_path, half_life_to_phi
-from .base import CountModel, FitReport
-from .latent_ar import NBLatentAR
-from .nb import nb2_sample
+from ..models.ar1 import ar1_path, half_life_to_phi
+from ..models.base import CountModel, FitReport
+from ..models.latent_ar import NBLatentAR
+from ..models.nb import nb2_sample
 
 
 class NBRegimeSwitch(CountModel):
