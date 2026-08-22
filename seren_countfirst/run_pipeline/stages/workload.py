@@ -12,11 +12,12 @@ from ...artifacts import write_csv
 from ...data import ActivityScheme, CountSeries
 from ...jobsize import EmpiricalJobSize, TwoPartJobSize, assign_work, read_two_part_jobsize
 from ...models import CountModel
-from ...paths import RESULTS
 from ...reconstruct import PatternTemplates, make_iid_mark_sampler, reconstruct_events
+from ...state import PipelineState
 from ..config import N_PATHS_RECONSTRUCT, RECONSTRUCT_ALPHAS
+from ..context import PipelineContext, resolve_context
 from ..randomness import SeedStream, generator
-from ..state import fitted_models, load_state
+from ..state import fitted_models
 
 EXPORT_ALPHA = 1.0
 
@@ -31,19 +32,20 @@ class WorkloadInputs:
     templates: PatternTemplates
     mark_sampler: Any
     bin_seconds: float
+    base_seed: int
 
 
-def _scheme(state) -> ActivityScheme:
+def _scheme(state: PipelineState) -> ActivityScheme:
     scheme = state["scheme"]
     return ActivityScheme.from_dict(scheme) if isinstance(scheme, dict) else scheme
 
 
-def _load_inputs() -> WorkloadInputs:
-    state = load_state()
-    size_json = RESULTS / "jobsize_two_part.json"
-    pool_npz = RESULTS / "jobsize_pool.npz"
+def _load_inputs(context: PipelineContext) -> WorkloadInputs:
+    state = context.load_state()
+    size_json = context.result("jobsize_two_part.json")
+    pool_npz = context.result("jobsize_pool.npz")
     if not (size_json.exists() and pool_npz.exists()):
-        raise SystemExit(f"no size model in {RESULTS}: run the `jobsize` stage first")
+        raise SystemExit(f"no size model in {context.results}: run the `jobsize` stage first")
 
     size_model = read_two_part_jobsize(size_json, pool_npz)
     trace_sizes = EmpiricalJobSize.from_npz(pool_npz).sizes
@@ -63,7 +65,15 @@ def _load_inputs() -> WorkloadInputs:
     )
     mark_sampler = make_iid_mark_sampler(np.asarray(state["batches_sizes"], dtype=int))
     return WorkloadInputs(
-        counts, model, calibration, size_model, trace_sizes, templates, mark_sampler, bin_seconds
+        counts=counts,
+        model=model,
+        calibration=calibration,
+        size_model=size_model,
+        trace_sizes=trace_sizes,
+        templates=templates,
+        mark_sampler=mark_sampler,
+        bin_seconds=bin_seconds,
+        base_seed=context.seed,
     )
 
 
@@ -76,10 +86,10 @@ def _simulate_path(
 ) -> dict[str, float | int | str]:
     syn = inputs.model.simulate(
         len(inputs.counts),
-        generator(SeedStream.LOAD_PATH, replicate),
+        generator(SeedStream.LOAD_PATH, replicate, base=inputs.base_seed),
         alpha=inputs.calibration * alpha,
     )
-    rng = generator(SeedStream.WORKLOAD_MARKS, replicate)
+    rng = generator(SeedStream.WORKLOAD_MARKS, replicate, base=inputs.base_seed)
     reconstructed = reconstruct_events(
         syn,
         inputs.bin_seconds,
@@ -161,10 +171,10 @@ def _summarize_sweep(per_path: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame
 def _export_workload(inputs: WorkloadInputs) -> tuple[pd.DataFrame, np.ndarray, float]:
     syn = inputs.model.simulate(
         len(inputs.counts),
-        generator(SeedStream.LOAD_PATH),
+        generator(SeedStream.LOAD_PATH, base=inputs.base_seed),
         alpha=inputs.calibration * EXPORT_ALPHA,
     )
-    rng = generator(SeedStream.WORKLOAD_MARKS)
+    rng = generator(SeedStream.WORKLOAD_MARKS, base=inputs.base_seed)
     reconstructed = reconstruct_events(
         syn,
         inputs.bin_seconds,
@@ -187,11 +197,12 @@ def _export_workload(inputs: WorkloadInputs) -> tuple[pd.DataFrame, np.ndarray, 
     return export, work, float(reconstructed.job_times_s.max())
 
 
-def stage_workload() -> None:
+def stage_workload(context: PipelineContext | None = None) -> None:
     """Compose arrivals and job sizes into workload artifacts."""
     started = time.time()
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    inputs = _load_inputs()
+    context = resolve_context(context)
+    context.results.mkdir(parents=True, exist_ok=True)
+    inputs = _load_inputs(context)
     print(
         f"size law: two-part over a {inputs.size_model.bulk_kind} bulk, cut "
         f"{inputs.size_model.cut:,.0f} units, k = {inputs.size_model.bulk.n_components}"
@@ -203,9 +214,9 @@ def stage_workload() -> None:
 
     per_path = _simulate_sweep(inputs)
     by_alpha, exponents = _summarize_sweep(per_path)
-    write_csv(per_path, RESULTS / "workload_paths.csv", index=False)
-    write_csv(by_alpha, RESULTS / "workload_by_alpha.csv", index=False)
-    write_csv(exponents, RESULTS / "workload_exponents.csv", index=False)
+    write_csv(per_path, context.result("workload_paths.csv"), index=False)
+    write_csv(by_alpha, context.result("workload_by_alpha.csv"), index=False)
+    write_csv(exponents, context.result("workload_exponents.csv"), index=False)
     print(f"\nworkload by load factor ({N_PATHS_RECONSTRUCT} paths each):")
     print(by_alpha.round(4).to_string(index=False))
     print("\nexponents in alpha:")
@@ -217,12 +228,15 @@ def stage_workload() -> None:
     )
 
     export, work, last_job_time = _export_workload(inputs)
-    write_csv(export, RESULTS / "workload_export.csv", index=False)
+    write_csv(export, context.result("workload_export.csv"), index=False)
     print(
         f"\nexported {len(export):,} jobs at alpha = {EXPORT_ALPHA} over "
         f"{last_job_time / 86400:.1f} days, {work.sum():,.3e} work units "
         f"({work.sum() / inputs.trace_sizes.sum():.3f} of the trace's absorbed work, "
         f"over {len(export) / len(inputs.trace_sizes):.3f} as many jobs)"
     )
-    print(f"wrote workload_paths.csv, workload_by_alpha.csv and workload_export.csv to {RESULTS}")
+    print(
+        "wrote workload_paths.csv, workload_by_alpha.csv and workload_export.csv "
+        f"to {context.results}"
+    )
     print(f"workload stage done in {time.time() - started:.0f}s")

@@ -10,7 +10,6 @@ from ...data import ActivityScheme, CountSeries
 from ...artifacts import write_csv
 from ...metrics import microstructure
 from ...models import CountModel
-from ...paths import RESULTS
 from ...reconstruct import (
     OffsetTemplates,
     PatternTemplates,
@@ -22,8 +21,9 @@ from ...reconstruct import (
 )
 from ...state import PipelineState
 from ..config import N_PATHS_RECONSTRUCT, RECONSTRUCT_ALPHAS
+from ..context import PipelineContext, resolve_context
 from ..randomness import SeedStream, generator
-from ..state import fitted_models, load_state, save_state
+from ..state import fitted_models
 
 _MICROSTRUCTURE_STATS = (
     "zero_iat_fraction",
@@ -47,6 +47,7 @@ class ReconstructionInputs:
     samplers: dict[str, Any]
     synthetic_paths: list[np.ndarray]
     trace_microstructure: pd.Series
+    base_seed: int
 
 
 def _trace_events(
@@ -63,8 +64,8 @@ def _trace_events(
     return times_s, sizes, scheme.classify(counts.values), scheme
 
 
-def _load_inputs() -> ReconstructionInputs:
-    state = load_state()
+def _load_inputs(context: PipelineContext) -> ReconstructionInputs:
+    state = context.load_state()
     counts = state["counts"]
     bin_seconds = float(counts.bin_seconds)
     model = fitted_models(state)[state.get("winner", "gated_mm")]
@@ -87,25 +88,26 @@ def _load_inputs() -> ReconstructionInputs:
         "iid": make_iid_mark_sampler(sizes),
         "conditional": make_conditional_mark_sampler(by_class, fallback=sizes),
     }
-    path_rng = generator(SeedStream.RECONSTRUCTION_POOL)
+    path_rng = generator(SeedStream.RECONSTRUCTION_POOL, base=context.seed)
     synthetic_paths = [
         model.simulate(len(counts), path_rng, alpha=calibration) for _ in range(N_PATHS_RECONSTRUCT)
     ]
-    trace_jobs = np.repeat(times_s, sizes)
+    trace_jobs: np.ndarray = np.repeat(times_s, sizes)
     trace_microstructure = microstructure(trace_jobs, times_s, counts.values)
     return ReconstructionInputs(
-        state,
-        counts,
-        model,
-        calibration,
-        bin_seconds,
-        times_s,
-        sizes,
-        scheme,
-        placements,
-        samplers,
-        synthetic_paths,
-        trace_microstructure,
+        state=state,
+        counts=counts,
+        model=model,
+        calibration=calibration,
+        bin_seconds=bin_seconds,
+        times_s=times_s,
+        sizes=sizes,
+        scheme=scheme,
+        placements=placements,
+        samplers=samplers,
+        synthetic_paths=synthetic_paths,
+        trace_microstructure=trace_microstructure,
+        base_seed=context.seed,
     )
 
 
@@ -116,7 +118,11 @@ def _score_microstructure(
     for placement, offsets in inputs.placements.items():
         for marks, sampler in inputs.samplers.items():
             for replicate, counts in enumerate(inputs.synthetic_paths):
-                rng = generator(SeedStream.RECONSTRUCTION_MARKS, replicate)
+                rng = generator(
+                    SeedStream.RECONSTRUCTION_MARKS,
+                    replicate,
+                    base=inputs.base_seed,
+                )
                 try:
                     reconstructed = reconstruct_events(
                         counts,
@@ -180,7 +186,7 @@ def _load_grid(inputs: ReconstructionInputs) -> pd.DataFrame:
     templates = inputs.placements["pattern"]
     sampler = inputs.samplers["iid"]
     for alpha in RECONSTRUCT_ALPHAS:
-        path_rng = generator(SeedStream.LOAD_PATH)
+        path_rng = generator(SeedStream.LOAD_PATH, base=inputs.base_seed)
         risks, strict_ok, subsecond = [], [], []
         for _ in range(N_PATHS_RECONSTRUCT):
             counts = inputs.model.simulate(
@@ -193,7 +199,7 @@ def _load_grid(inputs: ReconstructionInputs) -> pd.DataFrame:
                 reconstruct_events(
                     counts,
                     inputs.bin_seconds,
-                    generator(SeedStream.PLACEMENT_CHECK),
+                    generator(SeedStream.PLACEMENT_CHECK, base=inputs.base_seed),
                     sampler,
                     offsets=templates,
                     on_overflow="raise",
@@ -205,7 +211,7 @@ def _load_grid(inputs: ReconstructionInputs) -> pd.DataFrame:
                 reconstructed = reconstruct_events(
                     counts,
                     inputs.bin_seconds,
-                    generator(SeedStream.PLACEMENT_CHECK),
+                    generator(SeedStream.PLACEMENT_CHECK, base=inputs.base_seed),
                     sampler,
                     offsets=templates,
                     alpha=alpha,
@@ -244,10 +250,11 @@ def _load_grid(inputs: ReconstructionInputs) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def stage_reconstruct() -> None:
+def stage_reconstruct(context: PipelineContext | None = None) -> None:
     """Reconstruct events and report placement microstructure."""
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    inputs = _load_inputs()
+    context = resolve_context(context)
+    context.results.mkdir(parents=True, exist_ok=True)
+    inputs = _load_inputs(context)
     print(
         "trace microstructure:",
         {key: round(float(value), 4) for key, value in inputs.trace_microstructure.items()},
@@ -262,9 +269,9 @@ def stage_reconstruct() -> None:
             "microstructure summary (trace max bin 530; the model's tail runs past it)"
         )
     microstructure_frame, summary = _summarize_microstructure(inputs, per_path)
-    write_csv(per_path, RESULTS / "microstructure_paths.csv", index=False)
-    write_csv(checks, RESULTS / "export_check.csv", index=False)
-    write_csv(microstructure_frame, RESULTS / "microstructure.csv", index=False)
+    write_csv(per_path, context.result("microstructure_paths.csv"), index=False)
+    write_csv(checks, context.result("export_check.csv"), index=False)
+    write_csv(microstructure_frame, context.result("microstructure.csv"), index=False)
 
     conserved = checks[["batch_conserved", "job_conserved", "distinct_timestamps"]].all().all()
     print(
@@ -277,7 +284,7 @@ def stage_reconstruct() -> None:
     print(summary.xs("std", axis=1, level=1).round(4).to_string())
 
     grid = _load_grid(inputs)
-    write_csv(grid, RESULTS / "reconstruction_by_alpha.csv", index=False)
+    write_csv(grid, context.result("reconstruction_by_alpha.csv"), index=False)
     print(
         f"\nexport grid by load factor ({N_PATHS_RECONSTRUCT} paths each; strict = whole "
         f"seconds only, {int(inputs.bin_seconds)} slots per bin):"
@@ -285,4 +292,4 @@ def stage_reconstruct() -> None:
     print(grid.round(4).to_string(index=False))
     inputs.state["microstructure"] = microstructure_frame
     inputs.state["reconstruction_by_alpha"] = grid
-    save_state(inputs.state)
+    context.save_state(inputs.state)
