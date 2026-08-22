@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Collection
 from dataclasses import dataclass
 from enum import StrEnum
@@ -31,14 +30,6 @@ _CAPABILITY_COLUMNS = {
     DatasetCapability.EXECUTION_DURATIONS: frozenset({"duration_s"}),
     DatasetCapability.GPU_COUNTS: frozenset({"gpu_count"}),
 }
-
-
-def sha256_file(path: str | Path, chunk_size: int = 1 << 20) -> str:
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        while block := handle.read(chunk_size):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 @dataclass(frozen=True, slots=True)

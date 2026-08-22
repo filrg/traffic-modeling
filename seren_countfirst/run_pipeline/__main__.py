@@ -4,9 +4,15 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from traffic_modeling.core import StageExecution, StageInvocation, StageStatus
+from traffic_modeling.core import (
+    ArtifactRecord,
+    StageExecution,
+    StageInvocation,
+    StageStatus,
+)
 
 from ..provenance import runtime_environment, source_revision
+from .artifact_tracking import ArtifactSnapshot, changed_artifacts, snapshot_artifacts
 from .context import PipelineContext, resolve_context
 from .manifest import prepare_manifest, record_execution
 from .registry import STAGE_SPECS, plan_stages, validate_stage_order
@@ -53,19 +59,30 @@ def _print_plan(targets: list[str]) -> None:
 
 def _run_stage(name: str, arguments: list[str], context: PipelineContext) -> None:
     invocation = StageInvocation(name, tuple(arguments))
-    prepare_manifest(context)
+    manifest = prepare_manifest(context)
+    before: ArtifactSnapshot | None = None
+    if manifest is not None:
+        before = snapshot_artifacts(context)
     revision, dirty = source_revision()
     started_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     started = time.perf_counter()
     try:
         STAGE_SPECS[name].run(arguments, context)
+        outputs = changed_artifacts(context, before) if before is not None else ()
     except BaseException as exc:
+        partial_outputs: tuple[ArtifactRecord, ...] = ()
+        if before is not None:
+            try:
+                partial_outputs = changed_artifacts(context, before)
+            except Exception as artifact_error:
+                exc.add_note(f"could not collect output provenance: {artifact_error}")
         execution = StageExecution(
             invocation=invocation,
             status=StageStatus.FAILED,
             started_utc=started_utc,
             elapsed_seconds=time.perf_counter() - started,
             environment=runtime_environment(),
+            outputs=partial_outputs,
             code_revision=revision,
             working_tree_dirty=dirty,
             error=f"{type(exc).__name__}: {exc}",
@@ -83,6 +100,7 @@ def _run_stage(name: str, arguments: list[str], context: PipelineContext) -> Non
             started_utc=started_utc,
             elapsed_seconds=time.perf_counter() - started,
             environment=runtime_environment(),
+            outputs=outputs,
             code_revision=revision,
             working_tree_dirty=dirty,
         ),

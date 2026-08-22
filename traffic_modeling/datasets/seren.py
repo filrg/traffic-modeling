@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..core import DatasetRef
-from .base import DatasetCapability, TraceDataset, sha256_file
+from ..core import DatasetRef, sha256_file
+from .base import DatasetCapability, TraceDataset
 
 
 class DatasetIntegrityError(ValueError):

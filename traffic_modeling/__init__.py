@@ -1,4 +1,5 @@
 from .core import (
+    ArtifactRecord,
     DatasetRef,
     ModelRef,
     RunManifest,
@@ -11,6 +12,7 @@ from .core import (
 from .datasets import DatasetAdapter, DatasetCapability, TraceDataset
 
 __all__ = [
+    "ArtifactRecord",
     "DatasetAdapter",
     "DatasetCapability",
     "DatasetRef",

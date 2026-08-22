@@ -65,9 +65,10 @@ on its own.
 
 Executed invocations append a validated `run_manifest.json` under the selected
 results directory. It records the immutable run identity, resolved configuration,
-status, timing, runtime versions and source revision. `--plan` remains read-only;
-`reproduce.py` writes its outer timing summary separately as
-`reproduction_report.json`. Artifact checksums and safe resume are not enabled yet.
+status, timing, runtime versions, source revision, and every result/state file
+created or rewritten by that invocation with its size and SHA-256. `--plan`
+remains read-only; `reproduce.py` writes its outer timing summary separately as
+`reproduction_report.json`. Input preflight and safe resume are not enabled yet.
 
 Generating a workload directly:
 
@@ -117,7 +118,7 @@ SEREN_RESULTS=$PWD/results_scratch python -m seren_countfirst.run_pipeline evalu
 | `seren_countfirst/state.py` | the typed, resumable pipeline state as npy, csv and json; never pickle |
 | `seren_countfirst/artifacts.py` | atomic CSV, JSON and NPY writers used by the pipeline |
 | `seren_countfirst/ensemble.py` | which simulated run is representative, and how one is redrawn at another load |
-| `seren_countfirst/run_pipeline/` | staged orchestration, registries, runtime context and manifest persistence |
+| `seren_countfirst/run_pipeline/` | staged orchestration, registries, runtime context, output tracking and manifest persistence |
 | `seren_countfirst/experiments/` | standalone feasibility studies |
 | `seren_countfirst/tests/` | harness invariants and numerical regression pins |
 | `traffic_modeling/core/` | dataset/model/run identities and typed execution-manifest records |

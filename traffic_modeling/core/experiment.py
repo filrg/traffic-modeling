@@ -6,6 +6,7 @@ import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 _IDENTIFIER = re.compile(r"[a-z0-9]+(?:[._-][a-z0-9]+)*")
@@ -20,7 +21,7 @@ def validate_identifier(value: str, field: str) -> None:
         )
 
 
-def _validate_sha256(value: str, field: str) -> None:
+def validate_sha256(value: str, field: str) -> None:
     if not isinstance(value, str) or not _SHA256.fullmatch(value):
         raise ValueError(f"{field} must be a lowercase SHA-256 hex digest")
 
@@ -61,6 +62,15 @@ def config_fingerprint(config: Mapping[str, object]) -> str:
     return hashlib.sha256(_canonical_json(dict(config)).encode("utf-8")).hexdigest()
 
 
+def sha256_file(path: str | Path, chunk_size: int = 1 << 20) -> str:
+    """Return the SHA-256 digest of a file without loading it into memory."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        while block := handle.read(chunk_size):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def _string(payload: Mapping[str, Any], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str):
@@ -88,7 +98,7 @@ class DatasetRef:
     def __post_init__(self) -> None:
         for field in ("provider", "dataset", "version", "subset", "split"):
             validate_identifier(getattr(self, field), field)
-        _validate_sha256(self.content_hash, "content_hash")
+        validate_sha256(self.content_hash, "content_hash")
 
     @property
     def key(self) -> str:
@@ -173,7 +183,7 @@ class RunSpec:
             or not 0 <= self.seed < 2**32
         ):
             raise ValueError("seed must be an integer in [0, 2**32)")
-        _validate_sha256(self.config_hash, "config_hash")
+        validate_sha256(self.config_hash, "config_hash")
         if (
             isinstance(self.schema_version, bool)
             or not isinstance(self.schema_version, int)

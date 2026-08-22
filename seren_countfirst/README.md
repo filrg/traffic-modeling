@@ -42,6 +42,7 @@ The root modules provide reusable domain or infrastructure functions:
 | `ensemble.py` | representative-run selection and reproducible redraws for figures |
 | `paths.py` | environment-overridable compatibility paths |
 | `provenance.py` | interpreter/dependency metadata and Git source revision |
+| `run_pipeline/artifact_tracking.py` | before/after output discovery and content hashing at the orchestration boundary |
 
 ## Model roles
 
@@ -86,8 +87,10 @@ algorithm baselines live under `baselines/` and are fitted through the regular
 Scientific calculations stay in domain modules. Stage modules load inputs, call
 those calculations and write artifacts through an injected `PipelineContext`.
 The orchestration boundary records each stage invocation in `run_manifest.json`;
-`fit mm4` and `fit r2` are distinct records. This is execution provenance, not
-safe resume: output artifact hashes are deliberately deferred to the next layer.
+`fit mm4` and `fit r2` are distinct records. Each successful or failed record
+also catalogs result/state files created or rewritten by that invocation, using
+portable relative paths, sizes and SHA-256 digests. This is provenance, not safe
+resume: inputs and dependency artifacts are not preflighted before execution.
 
 ## Job size
 
