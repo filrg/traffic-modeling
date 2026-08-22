@@ -110,6 +110,7 @@ SEREN_RESULTS=$PWD/results_scratch python -m seren_countfirst.run_pipeline evalu
 | `seren_countfirst/experiments/` | standalone feasibility studies |
 | `seren_countfirst/tests/` | harness invariants and numerical regression pins |
 | `traffic_modeling/core/` | dataset, model and run identities shared by future implementations |
+| `traffic_modeling/datasets/` | canonical trace contracts, capabilities and provider adapters |
 | `figures/code/` | the manuscript figures; `make_all.py` renders every one |
 
 Each package folder carries its own README; `seren_countfirst/README.md` is the

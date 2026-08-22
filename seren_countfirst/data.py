@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, cast
 
 import numpy as np
 import pandas as pd
+from traffic_modeling.datasets import sha256_file as _sha256_file
 
 BASE_FREQ = "15min"
 BASE_BIN_S = 900.0
@@ -28,11 +28,8 @@ JOBSIZE_STATES = ("COMPLETED", "FAILED", "CANCELLED")
 
 
 def sha256_file(path: str | Path, chunk: int = 1 << 20) -> str:
-    h = hashlib.sha256()
-    with Path(path).open("rb") as fh:
-        while block := fh.read(chunk):
-            h.update(block)
-    return h.hexdigest()
+    """Compatibility wrapper around the shared dataset-integrity helper."""
+    return _sha256_file(path, chunk_size=chunk)
 
 
 def load_trace(csv_path: str | Path) -> pd.DataFrame:
@@ -230,7 +227,10 @@ class ActivityScheme:
         occupied = counts.values[counts.values > 0]
         if occupied.size == 0:
             raise ValueError("no occupied bins: cannot fit activity thresholds")
-        q = tuple(float(x) for x in np.quantile(occupied, quantiles))
+        q = cast(
+            tuple[float, float, float],
+            tuple(float(x) for x in np.asarray(np.quantile(occupied, quantiles))),
+        )
         return cls(
             edges=q, busy_threshold=float(np.quantile(occupied, busy_q)), quiet_threshold=0.0
         )

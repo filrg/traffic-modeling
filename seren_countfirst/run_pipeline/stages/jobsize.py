@@ -9,9 +9,10 @@ from typing import TypeAlias
 import numpy as np
 import pandas as pd
 from scipy import stats
+from traffic_modeling.datasets import DatasetCapability
 
 from ...artifacts import write_csv
-from ...data import JOBSIZE_STATES, arrival_view, jobsize_view, load_trace
+from ...data import JOBSIZE_STATES
 from ...jobsize import (
     ConditionalJobSize,
     EmpiricalJobSize,
@@ -63,8 +64,14 @@ def _compose(
 
 
 def _load_work_units(context: PipelineContext) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
-    raw = load_trace(context.trace_csv)
-    table = jobsize_table(jobsize_view(raw, "SFT"))
+    dataset = context.load_dataset(
+        DatasetCapability.ARRIVAL_EVENTS,
+        DatasetCapability.JOB_STATES,
+        DatasetCapability.EXECUTION_DURATIONS,
+        DatasetCapability.GPU_COUNTS,
+    )
+    arrivals = dataset.jobs
+    table = jobsize_table(dataset.jobs_in_states(JOBSIZE_STATES))
     sizes = table["job_size"].to_numpy()
     error = roundtrip_error_s(table)
     print(
@@ -82,7 +89,7 @@ def _load_work_units(context: PipelineContext) -> tuple[pd.DataFrame, pd.DataFra
     for gpu_count in _ECHO_GPUS:
         seconds = median * float(step_time_s(gpu_count, 1.0))
         print(f"  n = {gpu_count:4d}  ->  {seconds:9.0f} s  ({seconds / 60:7.1f} min)")
-    return raw, table, sizes
+    return arrivals, table, sizes
 
 
 def _fit_marginal(sizes: np.ndarray, context: PipelineContext) -> MarginalModel:
@@ -117,13 +124,13 @@ def _fit_marginal(sizes: np.ndarray, context: PipelineContext) -> MarginalModel:
 
 
 def _fit_structure(
-    raw: pd.DataFrame,
+    arrivals: pd.DataFrame,
     table: pd.DataFrame,
     sizes: np.ndarray,
     marginal: MarginalModel,
     context: PipelineContext,
 ) -> tuple[pd.DataFrame, pd.DataFrame, ConditionalJobSize]:
-    jobs = attach_activity(table, arrival_view(raw, "SFT"))
+    jobs = attach_activity(table, arrivals)
     batches = batch_frame(jobs)
     log_sizes = np.log(jobs["job_size"].to_numpy())
     conditional = ConditionalJobSize.fit(jobs, seed=context.seed, with_latent=False).freeze()
@@ -364,9 +371,9 @@ def stage_jobsize(context: PipelineContext | None = None) -> None:
     started = time.time()
     context = resolve_context(context)
     context.results.mkdir(parents=True, exist_ok=True)
-    raw, table, sizes = _load_work_units(context)
+    arrivals, table, sizes = _load_work_units(context)
     marginal = _fit_marginal(sizes, context)
-    jobs, batches, conditional = _fit_structure(raw, table, sizes, marginal, context)
+    jobs, batches, conditional = _fit_structure(arrivals, table, sizes, marginal, context)
     two_part, activity, cardinality, bin_index = _fit_two_part(jobs, batches, sizes, context)
     _, bin_of_job, n_jobs_by_bin = _composition_checks(
         jobs,

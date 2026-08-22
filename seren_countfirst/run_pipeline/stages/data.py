@@ -3,16 +3,14 @@ from __future__ import annotations
 import time
 
 import numpy as np
+from traffic_modeling.datasets import DatasetCapability
 
 from ...data import (
     ActivityScheme,
-    arrival_view,
     build_batches,
     build_counts,
     contiguous_split,
-    load_trace,
     segment_profiles,
-    sha256_file,
     zero_iat_fraction,
 )
 from ...metrics import base_marginals, idc_curve, metric_vector
@@ -25,12 +23,12 @@ from ..context import PipelineContext, resolve_context
 def stage_data(context: PipelineContext | None = None) -> None:
     context = resolve_context(context)
     t0 = time.time()
-    state: PipelineState = {"trace_sha256": sha256_file(context.trace_csv)}
-    raw = load_trace(context.trace_csv)
-    view = arrival_view(raw, "SFT")
-    batches = build_batches(view)
+    dataset = context.load_dataset(DatasetCapability.ARRIVAL_EVENTS)
+    state: PipelineState = {"trace_sha256": dataset.ref.content_hash}
+    view = dataset.jobs
+    batches = build_batches(view, time_col="submitted_at")
     counts = build_counts(batches.times)
-    z_iat = zero_iat_fraction(view)
+    z_iat = zero_iat_fraction(view, time_col="submitted_at")
 
     checks = {
         "n_sft_jobs": (len(view), AUDIT["n_sft_jobs"]),

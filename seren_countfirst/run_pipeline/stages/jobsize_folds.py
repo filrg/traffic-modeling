@@ -3,9 +3,10 @@ from __future__ import annotations
 import time
 
 import pandas as pd
+from traffic_modeling.datasets import DatasetCapability
 
 from ...artifacts import write_csv
-from ...data import arrival_view, jobsize_view, load_trace
+from ...data import JOBSIZE_STATES
 from ...jobsize import attach_activity, fold_report, jobsize_table
 from ..config import FOLD_KWARGS
 from ..context import PipelineContext, resolve_context
@@ -36,8 +37,16 @@ def stage_jobsize_folds(context: PipelineContext | None = None) -> None:
     t0 = time.time()
     context = resolve_context(context)
     context.results.mkdir(parents=True, exist_ok=True)
-    raw = load_trace(context.trace_csv)
-    jobs = attach_activity(jobsize_table(jobsize_view(raw, "SFT")), arrival_view(raw, "SFT"))
+    dataset = context.load_dataset(
+        DatasetCapability.ARRIVAL_EVENTS,
+        DatasetCapability.JOB_STATES,
+        DatasetCapability.EXECUTION_DURATIONS,
+        DatasetCapability.GPU_COUNTS,
+    )
+    jobs = attach_activity(
+        jobsize_table(dataset.jobs_in_states(JOBSIZE_STATES)),
+        dataset.jobs,
+    )
     print(
         f"{len(jobs):,} jobs over "
         f"{(jobs['bin'].max() - jobs['bin'].min()).total_seconds() / 86400:.1f} days"

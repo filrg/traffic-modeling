@@ -7,7 +7,7 @@ import pandas as pd
 from scipy import optimize
 from scipy.special import logsumexp
 
-from .work import _stream_activity
+from .work import _stream_activity, submission_column
 from .laws import LogNormalMixture, _lognormal_mean_below, _normal_below
 
 
@@ -80,7 +80,9 @@ class CompositionJobSize:
         # once every job is assigned the component it most likely came from
         label = np.argmax(resp, axis=1)
         frame = jobs.assign(_c=label, _z=z)
-        modal = frame.groupby(["bin", "submit_time_dt"])["_c"].transform(lambda s: s.mode().iat[0])
+        submitted_at = submission_column(frame)
+        key = ["bin", submitted_at]
+        modal = frame.groupby(key)["_c"].transform(lambda s: s.mode().iat[0])
         escape = float(np.mean(label != modal.to_numpy()))
 
         # the spread left inside a batch once its component is accounted for
@@ -89,7 +91,7 @@ class CompositionJobSize:
         for c in range(k):
             take = agree & (label == c)
             sub = frame.loc[take]
-            groups = sub.groupby(["bin", "submit_time_dt"])["_z"]
+            groups = sub.groupby(key)["_z"]
             dof = len(sub) - groups.ngroups
             s_job[c] = (
                 np.sqrt(((sub["_z"] - groups.transform("mean")) ** 2).sum() / dof)
@@ -124,10 +126,13 @@ class CompositionJobSize:
         card = np.asarray(cardinality, dtype=int)
         w = self.weights(act)
         pick = (w.cumsum(axis=1) > rng.random(len(act))[:, None]).argmax(axis=1)
-        offset = np.repeat(rng.normal(0.0, 1.0, len(act)) * self.s_batch[pick] + self.m[pick], card)
+        offset: np.ndarray = np.repeat(
+            rng.normal(0.0, 1.0, len(act)) * self.s_batch[pick] + self.m[pick],
+            card,
+        )
 
         n = int(card.sum())
-        which = np.repeat(pick, card)
+        which: np.ndarray = np.repeat(pick, card)
         loose = rng.random(n) < self.escape
         if loose.any():
             spare = np.repeat(w, card, axis=0)[loose]

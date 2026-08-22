@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
 from traffic_modeling.core import RunSpec
+from traffic_modeling.datasets import (
+    DatasetAdapter,
+    DatasetCapability,
+    SerenDatasetAdapter,
+    TraceDataset,
+)
 
 from ..paths import RESULTS, STATE_DIR, TRACE_CSV
 from ..state import PipelineState, load_portable_state, save_portable_state
@@ -40,6 +46,7 @@ class PipelineContext:
     state_store: StateStore
     seed: int = SEED
     run_spec: RunSpec | None = None
+    dataset_adapter: DatasetAdapter = field(default_factory=SerenDatasetAdapter)
 
     def __post_init__(self) -> None:
         if self.run_spec is not None and self.seed != self.run_spec.seed:
@@ -55,6 +62,7 @@ class PipelineContext:
         results: Path,
         state_store: StateStore,
         run_spec: RunSpec,
+        dataset_adapter: DatasetAdapter | None = None,
     ) -> PipelineContext:
         return cls(
             trace_csv=trace_csv,
@@ -62,7 +70,15 @@ class PipelineContext:
             state_store=state_store,
             seed=run_spec.seed,
             run_spec=run_spec,
+            dataset_adapter=(
+                dataset_adapter if dataset_adapter is not None else SerenDatasetAdapter()
+            ),
         )
+
+    def load_dataset(self, *required: DatasetCapability) -> TraceDataset:
+        spec = self.run_spec or DEFAULT_RUN_SPEC
+        dataset = self.dataset_adapter.load(self.trace_csv, spec.dataset)
+        return dataset.require(*required)
 
     def result(self, relative_path: str | Path) -> Path:
         relative = Path(relative_path)

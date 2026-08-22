@@ -114,6 +114,8 @@ class LogNormalMixture:
             trial = cls._em_once(z, k, rng, max_iter, tol)
             if best is None or trial[3] > best[3]:
                 best = trial
+        if best is None:
+            raise ValueError("n_init must be positive")
         weights, mu, sigma, _, n_iter, gain = best
         order = np.argsort(mu)
         return weights[order], mu[order], sigma[order], n_iter, gain
@@ -270,9 +272,10 @@ class EmpiricalJobSize:
 
     @classmethod
     def from_table(cls, table: pd.DataFrame) -> "EmpiricalJobSize":
+        gpu_column = "gpu_count" if "gpu_count" in table.columns else "gpu_num"
         return cls(
             sizes=table["job_size"].to_numpy(dtype=float),
-            gpus=table["gpu_num"].to_numpy(dtype=float),
+            gpus=table[gpu_column].to_numpy(dtype=float),
         )
 
     def replay(self) -> tuple[np.ndarray, np.ndarray]:
@@ -302,7 +305,9 @@ def _normal_below(bound: np.ndarray, sigma: float, rng: np.random.Generator) -> 
     return sigma * ndtri(rng.random(len(bound)) * mass)
 
 
-def _lognormal_mean_below(level: np.ndarray, log_cut: float, sigma: float) -> np.ndarray:
+def _lognormal_mean_below(
+    level: np.ndarray, log_cut: float, sigma: float | np.ndarray
+) -> np.ndarray:
     """Return E[exp(level + eta)] for eta ~ N(0, sigma^2) conditioned below the cut.
 
     Capped at the cut, which is the exact limit as the level runs away above it.
