@@ -158,6 +158,7 @@ silently loaded from legacy `results/` when namespaced mode is selected.
 | `traffic_modeling/core/` | dataset/model/run identities and typed execution-manifest records |
 | `traffic_modeling/datasets/` | canonical trace contracts, capabilities and provider adapters |
 | `figures/code/` | the manuscript figures; `make_all.py` renders every one |
+| `tools/` | local quality ratchet and isolated pipeline profiler |
 
 Each package folder carries its own README; `seren_countfirst/README.md` is the
 module map.
@@ -170,18 +171,40 @@ python figures/code/make_all.py --check    # which inputs are missing, and the s
 python figures/code/excursion.py --list    # the views one module offers
 ```
 
-## Tests
+## Quality
 
 ```bash
-python -m pytest -q                      # everything
-python -m pytest -q -m "not slow"        # the fast lane, for use between edits
+python tools/quality.py fast       # lint + typed scope + fast tests + wheel smoke
+python tools/quality.py source     # tracked source and package checks; no internal tests
+python tools/quality.py full       # include slow scientific tests
+python tools/quality.py package    # isolated wheel build/install/import smoke only
 ```
 
-Four kinds: harness invariants that encode the methodology as executable rules,
+The Mypy scope is an explicit ratchet in `pyproject.toml`: clean modules may be
+added, but a failing module is never removed merely to make the command green.
+The package smoke builds from a temporary copy, installs outside the checkout,
+checks both import roots and the `seren-pipeline` entry point, and rejects wheels
+that contain internal tests. `source` is therefore usable without `docs/` or
+`seren_countfirst/tests/`; `fast` is the normal local checkpoint.
+
+The internal suite has four kinds: harness invariants that encode the methodology,
 numerical pins that fix simulation checksums and the metric vector, a smoke suite
 that fits, simulates and freezes every model on a short synthetic series, and
 layout invariants that keep the house style and the seeding discipline from
 drifting back. A failing pin means a numerical result moved — treat it as the
 specification working, not as a test to update.
+
+Profile a real stage only in an isolated run namespace:
+
+```bash
+python tools/profile_pipeline.py \
+  --runs-dir runs/profiles \
+  --output runs/profiles/data.prof \
+  data
+```
+
+The profiler refuses the repository root and published `results/`, writes a
+standard `cProfile` file and prints cumulative hotspots. Keep profiling separate
+from the quality gate: heavy stages are evidence runs, not per-edit checks.
 
 Design rationale is in `docs/`; `docs/README.md` is the map.

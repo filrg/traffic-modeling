@@ -33,7 +33,12 @@ def write_csv(frame: pd.DataFrame | pd.Series, path: str | Path, *, index: bool)
     _atomic_write(path, lambda temporary: frame.to_csv(temporary, index=index))
 
 
-def write_json(payload: Any, path: str | Path, *, default=None) -> None:
+def write_json(
+    payload: Any,
+    path: str | Path,
+    *,
+    default: Callable[[Any], Any] | None = None,
+) -> None:
     """Write indented UTF-8 JSON atomically."""
     text = json.dumps(payload, indent=2, default=default)
 

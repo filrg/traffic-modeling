@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
 from ..state import PipelineState, rebuild_model
 from .context import default_context
+
+if TYPE_CHECKING:
+    from ..models import CountModel
 
 
 def load_state() -> PipelineState:
@@ -13,7 +17,7 @@ def save_state(state: PipelineState) -> None:
     default_context().save_state(state)
 
 
-def fitted_models(state: PipelineState) -> dict:
+def fitted_models(state: PipelineState) -> dict[str, CountModel]:
     """Return every fitted model, rebuilt from the portable state; never pickle."""
     models = {name: rebuild_model(entry) for name, entry in state.get("models_json", {}).items()}
     models.update(state.get("models", {}))

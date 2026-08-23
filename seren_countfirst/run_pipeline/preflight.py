@@ -126,6 +126,7 @@ def _verify_record(
     expected: ArtifactRecord,
     dataset: ArtifactRecord,
 ) -> str | None:
+    current: ArtifactRecord | None
     if expected.scope == "dataset":
         if expected.relative_path != dataset.relative_path:
             return "dataset source name changed"
