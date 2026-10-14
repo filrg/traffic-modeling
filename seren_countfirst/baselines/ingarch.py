@@ -1,16 +1,26 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import expit, logit
 
-from ..metrics import HOURLY_ACF_LAG_WEIGHTS, hourly_acf1_from_autocov
+from traffic_modeling.counts.metrics import HOURLY_ACF_LAG_WEIGHTS, hourly_acf1_from_autocov
+
 from ..models.base import CountModel, FitReport
 from ..models.nb import nb2_loglik
+from .calibration import GeometricMoments, solve_debiased
 
 _EPS = 1e-12
+# (a + b, b as a fraction of b_max, kappa) starting points for the debiased route
+_DEBIASED_STARTS = tuple(
+    np.array([logit(s), logit(frac), np.log(kappa)])
+    for s in (0.7, 0.97, 0.998)
+    for frac in (0.3, 0.9, 0.99)
+    for kappa in (0.3, 2.0)
+)
 
 
 def b_max(s: float, kappa: float) -> float:
@@ -59,7 +69,7 @@ class NBINGARCH(CountModel):
     """
 
     name = "nb_ingarch"
-    rung = None  # not a rung: the observation-driven external baseline
+    rung = None
     role = "benchmark"
 
     @staticmethod
@@ -163,6 +173,64 @@ class NBINGARCH(CountModel):
             }
         )
         # moment-calibrated: `report` stays None, so there is no AIC to quote
+        return model
+
+    @classmethod
+    def calibrate_debiased(
+        cls,
+        mean: float,
+        variance: float,
+        zero_fraction: float,
+        acf_1h: float,
+        acf_long: Mapping[int, float],
+        n_bins: int,
+        seed: int = 0,
+        **kwargs,
+    ) -> "NBINGARCH":
+        """Calibrate, inside the admissible region, to `NBGatedLatent.calibrate_debiased`'s targets.
+
+        The intercept matches the mean exactly. Persistence, feedback and
+        dispersion minimise one loss over the variance, the hourly lag-1 ACF and
+        the long-lag ACF, the last corrected for attenuation at `n_bins`.
+        `zero_fraction` is accepted for the shared signature and not fitted: the
+        model has no closed form for it.
+        """
+        m = float(mean)
+
+        def unpack(theta: np.ndarray) -> tuple:
+            logit_s = float(np.clip(theta[0], -12.0, 12.0))
+            intercept = np.log(m * (1.0 - expit(logit_s)))
+            return _unpack(np.array([intercept, logit_s, theta[1], theta[2]]))
+
+        def build(theta: np.ndarray) -> "NBINGARCH":
+            model = cls()
+            model._store(*unpack(theta), 4)
+            return model
+
+        def moments(theta: np.ndarray) -> GeometricMoments | None:
+            d, a, b, kappa = unpack(theta)
+            s = a + b
+            _, var = cls._moments(d, a, b, kappa)
+            if not np.isfinite(var) or var <= 0.0:
+                return None
+            rho1 = (a * cls._var_lambda(b, s, var) + b * var) / var
+            return GeometricMoments(variance=float(var), amplitude=float(rho1 / s), decay=float(s))
+
+        theta, report = solve_debiased(
+            moments,
+            build,
+            _DEBIASED_STARTS,
+            variance=float(variance),
+            zero_fraction=float(zero_fraction),
+            acf_1h=float(acf_1h),
+            acf_long=acf_long,
+            n_bins=n_bins,
+            seed=seed,
+            **kwargs,
+        )
+        model = build(theta)
+        model.params_.update(report)
+        model.name = "nb_ingarch_long"
         return model
 
     def _store(self, d: float, a: float, b: float, kappa: float, n_params: int) -> None:
@@ -271,7 +339,6 @@ class NBINGARCH(CountModel):
                 "mean": float(mean),
                 "variance": float(var),
                 "IDC_base": float(var / max(mean, _EPS)),
-                # same footing as the gated rungs, so the table rows compare
                 "acf_1h_lag1": float(hourly_acf1_from_autocov(var, gamma)),
                 "acf_lag1": float(rho1),
                 "acf_lag4": float(rho1 * s**3),

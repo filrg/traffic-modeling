@@ -14,11 +14,9 @@ from .context import PipelineContext, PortableStateStore, StateStore, default_co
 from .model_registry import CANDIDATE_KEYS, CANDIDATE_SPECS, FIT_TARGETS, MODEL_SPECS
 from .planning import InvocationRecipe, PlannedInvocation, plan_invocations
 from .recipes import DEFAULT_INVOCATION_RECIPE
-from .spec import DEFAULT_RUN_SPEC, resolved_config
 from .registry import (
     REPRODUCTION_STEPS,
     STAGE_SPECS,
-    STAGES,
     ReproductionStep,
     StageSpec,
     plan_stages,
@@ -37,6 +35,7 @@ from .registry import (
     validate_stage_graph,
     validate_stage_order,
 )
+from .spec import DEFAULT_RUN_SPEC, resolved_config
 
 __all__ = [
     "AUDIT",
@@ -61,7 +60,6 @@ __all__ = [
     "PortableStateStore",
     "REPRODUCTION_STEPS",
     "STAGE_SPECS",
-    "STAGES",
     "ReproductionStep",
     "StageSpec",
     "plan_stages",

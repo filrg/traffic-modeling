@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 import numpy as np
 from scipy.optimize import minimize
 from scipy.special import gammaln
@@ -20,7 +19,7 @@ class NBRegimeSwitch(CountModel):
     """
 
     name = "nb_regime"
-    rung = None  # not a rung: discrete regime chains are out of scope here
+    rung = None
     role = "benchmark"
 
     def __init__(self, n_states: int = 2, fast_ar: bool = True) -> None:

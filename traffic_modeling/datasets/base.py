@@ -17,9 +17,22 @@ class DatasetCapability(StrEnum):
     EXECUTION_INTERVALS = "execution-intervals"
     EXECUTION_DURATIONS = "execution-durations"
     GPU_COUNTS = "gpu-counts"
+    REQUEST_TOKENS = "request-tokens"
+    RESPONSE_TOKENS = "response-tokens"
+    REQUEST_TYPES = "request-types"
+    SESSION_IDS = "session-ids"
+    ELAPSED_TIMES = "elapsed-times"
 
 
 class DatasetCapabilityError(ValueError):
+    pass
+
+
+class DatasetIntegrityError(ValueError):
+    pass
+
+
+class DatasetSchemaError(ValueError):
     pass
 
 
@@ -29,7 +42,17 @@ _CAPABILITY_COLUMNS = {
     DatasetCapability.EXECUTION_INTERVALS: frozenset({"started_at", "ended_at"}),
     DatasetCapability.EXECUTION_DURATIONS: frozenset({"duration_s"}),
     DatasetCapability.GPU_COUNTS: frozenset({"gpu_count"}),
+    DatasetCapability.REQUEST_TOKENS: frozenset({"request_tokens"}),
+    DatasetCapability.RESPONSE_TOKENS: frozenset({"response_tokens"}),
+    DatasetCapability.REQUEST_TYPES: frozenset({"request_type"}),
+    DatasetCapability.SESSION_IDS: frozenset({"session_id"}),
+    DatasetCapability.ELAPSED_TIMES: frozenset({"elapsed_s"}),
 }
+
+_DATETIME_COLUMNS = frozenset({"submitted_at", "started_at", "ended_at"})
+_NUMERIC_COLUMNS = frozenset(
+    {"duration_s", "gpu_count", "request_tokens", "response_tokens", "elapsed_s"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,24 +73,13 @@ class TraceDataset:
         if missing:
             raise ValueError(f"canonical dataset is missing columns: {missing}")
         if len(self.jobs):
-            datetime_columns = required & {"submitted_at", "started_at", "ended_at"}
-            invalid_datetimes = sorted(
-                column
-                for column in datetime_columns
-                if not pd.api.types.is_datetime64_any_dtype(self.jobs[column].dtype)
-            )
-            if invalid_datetimes:
-                raise TypeError(
-                    f"canonical datetime columns have invalid dtype: {invalid_datetimes}"
-                )
-            numeric_columns = required & {"duration_s", "gpu_count"}
-            invalid_numeric = sorted(
-                column
-                for column in numeric_columns
-                if not pd.api.types.is_numeric_dtype(self.jobs[column].dtype)
-            )
-            if invalid_numeric:
-                raise TypeError(f"canonical numeric columns have invalid dtype: {invalid_numeric}")
+            for kind, columns, accepts in (
+                ("datetime", _DATETIME_COLUMNS, pd.api.types.is_datetime64_any_dtype),
+                ("numeric", _NUMERIC_COLUMNS, pd.api.types.is_numeric_dtype),
+            ):
+                wrong = sorted(c for c in required & columns if not accepts(self.jobs[c].dtype))
+                if wrong:
+                    raise TypeError(f"canonical {kind} columns have invalid dtype: {wrong}")
         object.__setattr__(self, "jobs", self.jobs.reset_index(drop=True).copy())
         object.__setattr__(self, "capabilities", capabilities)
 

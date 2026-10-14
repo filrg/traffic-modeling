@@ -1,0 +1,14 @@
+Copyright (c) 2026 The seren-countfirst authors
+
+The contents of results/ (fitted model parameters, the portable pipeline
+state, evaluation tables and the exported synthetic workload) are licensed
+under the Creative Commons Attribution 4.0 International License (CC BY 4.0):
+
+    https://creativecommons.org/licenses/by/4.0/legalcode
+
+These artifacts are derived from the Seren job trace of AcmeTrace
+(https://github.com/InternLM/AcmeTrace), released by Shanghai AI Laboratory
+under CC BY 4.0. Reuse must credit both this work and AcmeTrace. The trace
+itself is not redistributed in this repository.
+
+The source code is licensed separately under the MIT License; see LICENSE.

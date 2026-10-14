@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from .work import batch_frame, bin_grid_index
 from .composition import CompositionJobSize
 from .two_part import TAIL_QUANTILE, TwoPartJobSize
+from .work import batch_frame, bin_grid_index
 
 if TYPE_CHECKING:
     from .conditional import ConditionalJobSize
@@ -155,7 +155,7 @@ def assign_work(
 
     Pass the load factor as `alpha` to read those counts as a superposition of
     that many unit-load streams; leaving it at 1 reads them as one stream that
-    became busier. The two readings are different claims about load.
+    became busier.
     """
     counts = np.asarray(counts, dtype=float)
     bin_of_batch = (np.asarray(batch_times_s, dtype=float) // float(bin_seconds)).astype(int)

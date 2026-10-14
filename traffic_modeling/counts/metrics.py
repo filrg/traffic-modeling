@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
 
-from .data import SCALES
+from .series import SCALES
 
 
 def aggregate(x: np.ndarray, q: int) -> np.ndarray:
@@ -54,7 +55,7 @@ def hourly_acf1_from_autocov(gamma0: float, gamma: Mapping[int, float]) -> float
     return num / den
 
 
-def acf(x: np.ndarray, lags: Sequence[int]) -> pd.Series:
+def acf(x: np.ndarray, lags: Sequence[int] | np.ndarray) -> pd.Series:
     x = np.asarray(x, dtype=float)
     out = {}
     if len(x) < 3 or np.std(x) == 0:
@@ -73,8 +74,8 @@ def run_lengths(mask: np.ndarray) -> np.ndarray:
     if mask.size == 0 or not mask.any():
         return np.empty(0, dtype=int)
     d = np.diff(mask.astype(int))
-    starts = np.flatnonzero(d == 1) + 1
-    ends = np.flatnonzero(d == -1) + 1
+    starts: np.ndarray = np.flatnonzero(d == 1) + 1
+    ends: np.ndarray = np.flatnonzero(d == -1) + 1
     if mask[0]:
         starts = np.r_[0, starts]
     if mask[-1]:
@@ -184,7 +185,7 @@ def microstructure(
     )
 
 
-def base_marginals(x: np.ndarray, bins_per_hour: int = 4) -> dict:
+def base_marginals(x: np.ndarray, bins_per_hour: int = 4) -> dict[str, float]:
     """Return the four base-bin calibration targets, plus the max.
 
     The single definition shared by the pipeline and the experiments, so trace
@@ -200,18 +201,36 @@ def base_marginals(x: np.ndarray, bins_per_hour: int = 4) -> dict:
     }
 
 
+DEFAULT_ACF_LAGS: tuple[int, ...] = (1, 2, 4, 8, 24, 48, 96, 192, 384)
+DEFAULT_ROLLING_WINDOWS: tuple[int, ...] = (4, 96)
+
+
+@dataclass(frozen=True, slots=True)
+class MetricSpec:
+    """Which scales, lags and windows one metric vector is measured on."""
+
+    scales: Mapping[str, int] = field(default_factory=lambda: SCALES)
+    acf_lags: tuple[int, ...] = DEFAULT_ACF_LAGS
+    rolling_windows: tuple[int, ...] = DEFAULT_ROLLING_WINDOWS
+    quiet_threshold: float = 0.0
+
+
+DEFAULT_METRICS = MetricSpec()
+
+
 def metric_vector(
     x: np.ndarray,
     busy_threshold: float,
     quiet_threshold: float = 0.0,
-    acf_lags: Sequence[int] = (1, 2, 4, 8, 24, 48, 96, 192, 384),
-    rolling_windows: Sequence[int] = (4, 96),
+    acf_lags: Sequence[int] = DEFAULT_ACF_LAGS,
+    rolling_windows: Sequence[int] = DEFAULT_ROLLING_WINDOWS,
+    scales: Mapping[str, int] | None = None,
 ) -> pd.Series:
     """Return one flat metric vector per path, used by the gates and Z scores."""
     x = np.asarray(x, dtype=float)
     parts = [
         pd.Series({"mean": float(x.mean()), "total": float(x.sum()), "n_bins": len(x)}),
-        idc_curve(x).add_prefix("IDC_"),
+        idc_curve(x, SCALES if scales is None else scales).add_prefix("IDC_"),
         acf(x, acf_lags).rename(lambda lag: f"ACF_lag{lag}"),
         episode_stats(x, busy_threshold, quiet_threshold),
         wavelet_variance(x),

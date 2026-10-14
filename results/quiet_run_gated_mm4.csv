@@ -1,0 +1,10 @@
+,0
+n_quiet_runs,833.0
+mean_run,13.336134453781513
+q95_empirical,51.19999999999993
+q95_geometric_same_mean,39.0
+q99_empirical,115.0
+q99_geometric_same_mean,60.0
+max_empirical,804.0
+P_exceed_geoQ99_empirical,0.03841536614645858
+P_exceed_geoQ99_geometric,0.01

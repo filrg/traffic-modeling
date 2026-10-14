@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Collection, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
@@ -10,17 +10,13 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, cast
 
-from .experiment import RunSpec, config_fingerprint, validate_identifier, validate_sha256
-
-
-def _require_keys(payload: Mapping[str, Any], expected: Collection[str], label: str) -> None:
-    expected_keys = set(expected)
-    actual = set(payload)
-    if actual != expected_keys:
-        raise ValueError(
-            f"invalid {label} fields; missing={sorted(expected_keys - actual)}, "
-            f"extra={sorted(actual - expected_keys)}"
-        )
+from .experiment import (
+    RunSpec,
+    config_fingerprint,
+    require_keys,
+    validate_identifier,
+    validate_sha256,
+)
 
 
 def _freeze_json(value: object) -> object:
@@ -104,7 +100,7 @@ class ArtifactRecord:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> ArtifactRecord:
-        _require_keys(
+        require_keys(
             payload,
             {"scope", "relative_path", "sha256", "size_bytes"},
             "ArtifactRecord",
@@ -120,7 +116,7 @@ class ArtifactRecord:
             raise ValueError(f"invalid artifact record: {exc}") from exc
 
 
-_STAGE_EXECUTION_V1_FIELDS = frozenset(
+_STAGE_EXECUTION_FIELDS = frozenset(
     {
         "invocation",
         "status",
@@ -130,10 +126,22 @@ _STAGE_EXECUTION_V1_FIELDS = frozenset(
         "code_revision",
         "working_tree_dirty",
         "error",
+        "outputs",
+        "inputs",
+        "inputs_complete",
     }
 )
-_STAGE_EXECUTION_V2_FIELDS = _STAGE_EXECUTION_V1_FIELDS | {"outputs"}
-_STAGE_EXECUTION_V3_FIELDS = _STAGE_EXECUTION_V2_FIELDS | {"inputs", "inputs_complete"}
+_RUN_MANIFEST_FIELDS = frozenset(
+    {
+        "schema_version",
+        "run_id",
+        "run_fingerprint",
+        "run_spec",
+        "resolved_config",
+        "created_utc",
+        "executions",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,7 +161,7 @@ class StageInvocation:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> StageInvocation:
-        _require_keys(payload, {"stage", "arguments"}, "StageInvocation")
+        require_keys(payload, {"stage", "arguments"}, "StageInvocation")
         stage = payload.get("stage")
         arguments = payload.get("arguments")
         if not isinstance(stage, str) or not isinstance(arguments, list):
@@ -234,7 +242,7 @@ class StageExecution:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> StageExecution:
-        _require_keys(payload, _STAGE_EXECUTION_V3_FIELDS, "StageExecution")
+        require_keys(payload, _STAGE_EXECUTION_FIELDS, "StageExecution")
         invocation = payload.get("invocation")
         environment = payload.get("environment")
         inputs = payload.get("inputs")
@@ -328,19 +336,7 @@ class RunManifest:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> RunManifest:
-        _require_keys(
-            payload,
-            {
-                "schema_version",
-                "run_id",
-                "run_fingerprint",
-                "run_spec",
-                "resolved_config",
-                "created_utc",
-                "executions",
-            },
-            "RunManifest",
-        )
+        require_keys(payload, _RUN_MANIFEST_FIELDS, "RunManifest")
         run_spec = payload.get("run_spec")
         resolved_config = payload.get("resolved_config")
         executions = payload.get("executions")
@@ -351,33 +347,15 @@ class RunManifest:
         ):
             raise ValueError("invalid run manifest")
         schema_version = payload.get("schema_version")
-        if isinstance(schema_version, bool) or not isinstance(schema_version, int):
-            raise ValueError("schema_version must be an integer")
-        if schema_version not in {1, 2, 3}:
+        if isinstance(schema_version, bool) or schema_version != 3:
             raise ValueError(f"unsupported RunManifest schema version: {schema_version}")
-        normalized_executions: list[Mapping[str, Any]] = []
-        for item in executions:
-            if not isinstance(item, Mapping):
-                raise ValueError("executions must contain objects")
-            expected = {
-                1: _STAGE_EXECUTION_V1_FIELDS,
-                2: _STAGE_EXECUTION_V2_FIELDS,
-                3: _STAGE_EXECUTION_V3_FIELDS,
-            }[schema_version]
-            _require_keys(item, expected, f"StageExecution v{schema_version}")
-            upgraded = dict(item)
-            if schema_version == 1:
-                upgraded["outputs"] = []
-            if schema_version <= 2:
-                upgraded["inputs"] = []
-                upgraded["inputs_complete"] = False
-            normalized_executions.append(upgraded)
+        if any(not isinstance(item, Mapping) for item in executions):
+            raise ValueError("executions must contain objects")
         manifest = cls(
             run_spec=RunSpec.from_dict(run_spec),
             resolved_config=resolved_config,
             created_utc=_timestamp(payload.get("created_utc"), "created_utc"),
-            executions=tuple(StageExecution.from_dict(item) for item in normalized_executions),
-            schema_version=3,
+            executions=tuple(StageExecution.from_dict(item) for item in executions),
         )
         if payload.get("run_id") != manifest.run_spec.run_id:
             raise ValueError("run_id does not match RunSpec")

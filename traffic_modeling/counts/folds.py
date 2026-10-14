@@ -1,18 +1,33 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
 
-from ..bootstrap import bootstrap_metric_envelope
-from ..data import Split
-from ..metrics import effective_windows, metric_vector, z_score
+from .bootstrap import bootstrap_metric_envelope
+from .metrics import DEFAULT_METRICS, MetricSpec, effective_windows, metric_vector, z_score
+from .series import Split
 
 
-def scale_support(n_bins: int) -> pd.DataFrame:
+def _measurer(busy_threshold: float, metrics: MetricSpec) -> Callable[[np.ndarray], pd.Series]:
+    def measure(x: np.ndarray) -> pd.Series:
+        return metric_vector(
+            x,
+            busy_threshold,
+            quiet_threshold=metrics.quiet_threshold,
+            acf_lags=metrics.acf_lags,
+            rolling_windows=metrics.rolling_windows,
+            scales=metrics.scales,
+        )
+
+    return measure
+
+
+def scale_support(n_bins: int, scales: Mapping[str, int] | None = None) -> pd.DataFrame:
     """Return effective window counts per scale, and whether each is reportable."""
-    nq = effective_windows(n_bins)
+    nq = effective_windows(n_bins) if scales is None else effective_windows(n_bins, scales)
     return pd.DataFrame(
         {
             "scale": nq.index,
@@ -42,8 +57,14 @@ FOLD_CORE_METRICS: tuple[str, ...] = (
 )
 
 
+class CountSimulator(Protocol):
+    def simulate(
+        self, n_bins: int, rng: np.random.Generator, **kwargs: Any
+    ) -> np.ndarray: ...
+
+
 def evaluate_on_folds(
-    model,
+    model: CountSimulator,
     folds: Sequence[Split],
     busy_threshold: float,
     n_paths: int = 10,
@@ -51,8 +72,10 @@ def evaluate_on_folds(
     boot_rep: int = 100,
     boot_method: str = "stationary_24h",
     metric_names: Sequence[str] = FOLD_CORE_METRICS,
-    refit: Callable[[np.ndarray], object] | None = None,
-    **sim_kwargs,
+    refit: Callable[[np.ndarray], CountSimulator] | None = None,
+    metrics: MetricSpec = DEFAULT_METRICS,
+    block: int | None = None,
+    **sim_kwargs: Any,
 ) -> pd.DataFrame:
     """Score one model against every rolling-origin validation window.
 
@@ -64,26 +87,28 @@ def evaluate_on_folds(
     per-fold rescaling is applied. Pass `refit` to fit on each fold's training
     part, which grades the estimator rather than the frozen candidate.
     """
-    rows: list[dict] = []
+    rows: list[dict[str, Any]] = []
     for k, fold in enumerate(folds, start=1):
         val = np.asarray(fold.validation.values, dtype=float)
         n = len(val)
-        supported = scale_support(n)
+        supported = scale_support(n, metrics.scales)
         reportable = set(supported.index[supported["reportable"].to_numpy()])
         keep = [m for m in metric_names if not m.startswith("IDC_") or m[4:] in reportable]
 
         est = refit(np.asarray(fold.train.values, dtype=float)) if refit is not None else model
         rng = np.random.default_rng(seed + 1009 * k)
         paths = [est.simulate(n, rng, **sim_kwargs) for _ in range(n_paths)]
-        syn_frame = pd.DataFrame([metric_vector(p, busy_threshold) for p in paths])
+        measure = _measurer(busy_threshold, metrics)
+        syn_frame = pd.DataFrame([measure(p) for p in paths])
         syn, syn_sd = syn_frame.mean(), syn_frame.std(ddof=1)
-        obs = metric_vector(val, busy_threshold)
+        obs = measure(val)
         env = bootstrap_metric_envelope(
             val,
-            lambda x: metric_vector(x, busy_threshold),
+            measure,
             method=boot_method,
             n_rep=boot_rep,
             seed=seed + k,
+            block=block,
         )
         for name in keep:
             if name not in obs.index or name not in syn.index:

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,9 @@ name = "seren-countfirst"
 version = "0.1.0"
 description = "Trace-calibrated count-first arrival and job-size generator for LLM fine-tuning workloads"
 readme = "README.md"
-requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE", "LICENSE-DATA"]
+requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.0",
     "pandas>=2.2",
@@ -18,10 +20,12 @@ dependencies = [
 figures = ["matplotlib>=3.8"]
 dev = [
     "mypy>=1.17",
-    "pyflakes>=3.2",
     "pytest>=8.0",
     "ruff>=0.12",
 ]
+
+[project.urls]
+Repository = "https://github.com/filrg/traffic-modeling"
 
 [project.scripts]
 seren-pipeline = "seren_countfirst.run_pipeline.__main__:cli"
@@ -37,20 +41,21 @@ markers = [
 ]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 100
 exclude = [
     ".internal-backups",
+    "burstgpt_countfirst",
     "docs",
     "results*",
     "seren_countfirst/tests",
 ]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F"]
+select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 files = [
     "tools",
     "traffic_modeling",

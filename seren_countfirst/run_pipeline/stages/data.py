@@ -3,9 +3,10 @@ from __future__ import annotations
 import time
 
 import numpy as np
-from traffic_modeling.datasets import DatasetCapability
 
-from ...data import (
+from traffic_modeling.counts.bootstrap import bootstrap_metric_envelope, scale_matched_idc_envelope
+from traffic_modeling.counts.metrics import base_marginals, idc_curve, metric_vector
+from traffic_modeling.counts.series import (
     ActivityScheme,
     build_batches,
     build_counts,
@@ -13,8 +14,8 @@ from ...data import (
     segment_profiles,
     zero_iat_fraction,
 )
-from ...metrics import base_marginals, idc_curve, metric_vector
-from ...bootstrap import bootstrap_metric_envelope, scale_matched_idc_envelope
+from traffic_modeling.datasets import DatasetCapability
+
 from ...state import PipelineState
 from ..config import AUDIT
 from ..context import PipelineContext, resolve_context

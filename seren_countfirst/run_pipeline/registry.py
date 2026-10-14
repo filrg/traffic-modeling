@@ -211,15 +211,13 @@ _SPECS = (
 )
 
 STAGE_SPECS = _stage_spec_registry(_SPECS)
-# Compatibility map: callers historically treated STAGES as name -> callable.
-STAGES = MappingProxyType({name: spec.run for name, spec in STAGE_SPECS.items()})
 
 REPRODUCTION_STEPS = (
     ReproductionStep(("data",), 0.6),
     ReproductionStep(("fit", "r2", "r3", "r4"), 2.0),
     ReproductionStep(("fit", "gated"), 4.0),
     ReproductionStep(("fit", "mm", "mm2", "mm3", "mm4", "mm5"), 0.5),
-    ReproductionStep(("fit", "onoff", "ingarch", "nogate"), 0.4),
+    ReproductionStep(("fit", "onoff", "ingarch", "onoff_long", "ingarch_long", "nogate"), 0.6),
     ReproductionStep(("evaluate",), 2.0),
     ReproductionStep(("scaling",), 3.0),
     ReproductionStep(("horizon",), 2.0),

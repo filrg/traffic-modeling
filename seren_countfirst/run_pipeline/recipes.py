@@ -5,7 +5,6 @@ from traffic_modeling.core import StageInvocation
 from .planning import InvocationRecipe
 from .registry import REPRODUCTION_STEPS
 
-
 DEFAULT_INVOCATION_RECIPE = InvocationRecipe(
     name="seren-countfirst-full",
     invocations=tuple(

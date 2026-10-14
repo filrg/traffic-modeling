@@ -1,0 +1,9 @@
+name,n_pass,n_seeds,worst_value,threshold,worst_margin,worst_seed,median_value,worst_detail
+1_expected_rate,9,10,0.05910693107122034,0.05,1.1821386214244067,20262729,0.02029653379433266,relative rate error 0.0591
+2_realised_rate_distribution,10,10,0.25978450011000453,3.0,0.08659483337000151,20262729,0.0892065412662553,Z = 0.26 against bootstrap SE
+3_idc_envelope,10,10,1.0,0.6,0.6,20260729,1.0,100% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d)
+4_acf_no_systematic_bias,10,10,1.521939396168252,3.0,0.507313132056084,20263729,1.430255128311116,"worst ACF Z 1.52, systematic=False"
+5_episodes_and_tails,10,10,2.9171563231725735,3.0,0.9723854410575244,20267729,2.7343646265991253,worst episode/tail Z 2.92
+6_spectrum_and_totals,10,10,0.8846602908478054,6.0,0.14744338180796757,20262729,0.7765376684325176,worst wavelet-variance Z 0.88
+7_fold_stability,10,10,2.898384653726183,3.0,0.9661282179087277,20267729,2.6500219332417907,"4 folds, worst Z 2.90 (IDC_2d on expanding_2)"
+8_scaling_drift,9,10,1.1698134572438919,1.0,1.1698134572438919,20267729,0.7542454739421185,"rule=proportional, alpha in [0.5, 2.0]: worst rate_Z 3.51 vs tol 3 at alpha=8; |IDC_15m drift| over the full sweep 1.82"

@@ -1,0 +1,81 @@
+seed,name,passed,detail,value,threshold,margin
+20260729,1_expected_rate,True,relative rate error 0.0267,0.026727708873566902,0.05,0.534554177471338
+20260729,2_realised_rate_distribution,True,Z = 0.12 against bootstrap SE,0.11747259353457008,3.0,0.03915753117819003
+20260729,3_idc_envelope,True,100% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),1.0,0.6,0.6
+20260729,4_acf_no_systematic_bias,True,"worst ACF Z 1.40, systematic=False",1.4006045152241116,3.0,0.4668681717413705
+20260729,5_episodes_and_tails,True,worst episode/tail Z 2.76,2.759581624689888,3.0,0.919860541563296
+20260729,6_spectrum_and_totals,True,worst wavelet-variance Z 0.81,0.8130151581526294,6.0,0.13550252635877155
+20260729,7_fold_stability,True,"4 folds, worst Z 2.41 (IDC_2d on expanding_2)",2.410237441364045,3.0,0.8034124804546816
+20260729,8_scaling_drift,True,"rule=proportional, alpha in [0.5, 2.0]: worst IDC_1d_drift_log_mean 0.754 vs tol 1 at alpha=0.5; |IDC_15m drift| over the full sweep 2.44",0.7539861446731252,1.0,0.7539861446731252
+20261729,1_expected_rate,True,relative rate error 0.0027,0.002678117943460623,0.05,0.053562358869212456
+20261729,2_realised_rate_distribution,True,Z = 0.01 against bootstrap SE,0.011770760527885173,3.0,0.003923586842628391
+20261729,3_idc_envelope,True,100% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),1.0,0.6,0.6
+20261729,4_acf_no_systematic_bias,True,"worst ACF Z 1.47, systematic=False",1.47174512362045,3.0,0.4905817078734833
+20261729,5_episodes_and_tails,True,worst episode/tail Z 2.88,2.8819200058869345,3.0,0.9606400019623115
+20261729,6_spectrum_and_totals,True,worst wavelet-variance Z 0.73,0.7313792333259034,6.0,0.12189653888765056
+20261729,7_fold_stability,True,"4 folds, worst Z 2.63 (IDC_2d on expanding_2)",2.6255335781659084,3.0,0.8751778593886361
+20261729,8_scaling_drift,True,"rule=proportional, alpha in [0.5, 2.0]: worst IDC_1d_drift_log_mean 0.755 vs tol 1 at alpha=2; |IDC_15m drift| over the full sweep 2.86",0.7545048032111118,1.0,0.7545048032111118
+20262729,1_expected_rate,False,relative rate error 0.0591,0.05910693107122034,0.05,1.1821386214244067
+20262729,2_realised_rate_distribution,True,Z = 0.26 against bootstrap SE,0.25978450011000453,3.0,0.08659483337000151
+20262729,3_idc_envelope,True,100% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),1.0,0.6,0.6
+20262729,4_acf_no_systematic_bias,True,"worst ACF Z 1.45, systematic=False",1.4546434034581501,3.0,0.48488113448605
+20262729,5_episodes_and_tails,True,worst episode/tail Z 2.69,2.6852303546938305,3.0,0.8950767848979435
+20262729,6_spectrum_and_totals,True,worst wavelet-variance Z 0.88,0.8846602908478054,6.0,0.14744338180796757
+20262729,7_fold_stability,True,"4 folds, worst Z 2.67 (IDC_2d on expanding_2)",2.6661707595840918,3.0,0.8887235865280306
+20262729,8_scaling_drift,True,"rule=proportional, alpha in [0.5, 2.0]: worst rate_Z 2.98 vs tol 3 at alpha=2; |IDC_15m drift| over the full sweep 1.76",0.9939861753771648,1.0,0.9939861753771648
+20263729,1_expected_rate,True,relative rate error 0.0198,0.01977861311569873,0.05,0.3955722623139746
+20263729,2_realised_rate_distribution,True,Z = 0.09 against bootstrap SE,0.08693019630709245,3.0,0.02897673210236415
+20263729,3_idc_envelope,True,100% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),1.0,0.6,0.6
+20263729,4_acf_no_systematic_bias,True,"worst ACF Z 1.52, systematic=False",1.521939396168252,3.0,0.507313132056084
+20263729,5_episodes_and_tails,True,worst episode/tail Z 2.78,2.7771029641428293,3.0,0.9257009880476098
+20263729,6_spectrum_and_totals,True,worst wavelet-variance Z 0.77,0.7662385609169703,6.0,0.12770642681949504
+20263729,7_fold_stability,True,"4 folds, worst Z 2.46 (IDC_2d on expanding_2)",2.455248017401831,3.0,0.8184160058006104
+20263729,8_scaling_drift,True,"rule=proportional, alpha in [0.5, 2.0]: worst IDC_1d_drift_log_mean 0.696 vs tol 1 at alpha=2; |IDC_15m drift| over the full sweep 1.74",0.6958426187107498,1.0,0.6958426187107498
+20264729,1_expected_rate,True,relative rate error 0.0037,0.0036917134031534404,0.05,0.07383426806306881
+20264729,2_realised_rate_distribution,True,Z = 0.02 against bootstrap SE,0.01622567613656049,3.0,0.00540855871218683
+20264729,3_idc_envelope,True,100% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),1.0,0.6,0.6
+20264729,4_acf_no_systematic_bias,True,"worst ACF Z 1.37, systematic=False",1.3697450350572862,3.0,0.45658167835242874
+20264729,5_episodes_and_tails,True,worst episode/tail Z 2.64,2.640634849053389,3.0,0.8802116163511297
+20264729,6_spectrum_and_totals,True,worst wavelet-variance Z 0.74,0.7386240479691591,6.0,0.12310400799485986
+20264729,7_fold_stability,True,"4 folds, worst Z 2.56 (IDC_2d on expanding_2)",2.5620889567715133,3.0,0.8540296522571711
+20264729,8_scaling_drift,True,"rule=proportional, alpha in [0.5, 2.0]: worst IDC_1d_drift_log_mean 0.721 vs tol 1 at alpha=2; |IDC_15m drift| over the full sweep 2.36",0.7205126571954032,1.0,0.7205126571954032
+20265729,1_expected_rate,True,relative rate error 0.0414,0.04136041704357385,0.05,0.827208340871477
+20265729,2_realised_rate_distribution,True,Z = 0.18 against bootstrap SE,0.1817857072135807,3.0,0.060595235737860235
+20265729,3_idc_envelope,True,100% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),1.0,0.6,0.6
+20265729,4_acf_no_systematic_bias,True,"worst ACF Z 1.43, systematic=False",1.4288414911648701,3.0,0.47628049705495673
+20265729,5_episodes_and_tails,True,worst episode/tail Z 2.60,2.601332125792906,3.0,0.8671107085976354
+20265729,6_spectrum_and_totals,True,worst wavelet-variance Z 0.85,0.8472741724726927,6.0,0.1412123620787821
+20265729,7_fold_stability,True,"4 folds, worst Z 2.63 (IDC_2d on expanding_2)",2.6338731068994896,3.0,0.8779577022998298
+20265729,8_scaling_drift,True,"rule=proportional, alpha in [0.5, 2.0]: worst IDC_1d_drift_log_mean 0.735 vs tol 1 at alpha=0.5; |IDC_15m drift| over the full sweep 2.34",0.7354823970459456,1.0,0.7354823970459456
+20266729,1_expected_rate,True,relative rate error 0.0049,0.004920380458453,0.05,0.09840760916906
+20266729,2_realised_rate_distribution,True,Z = 0.02 against bootstrap SE,0.021625866113908907,3.0,0.007208622037969636
+20266729,3_idc_envelope,True,100% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),1.0,0.6,0.6
+20266729,4_acf_no_systematic_bias,True,"worst ACF Z 1.43, systematic=False",1.4322307784391966,3.0,0.4774102594797322
+20266729,5_episodes_and_tails,True,worst episode/tail Z 2.71,2.7070234741607515,3.0,0.9023411580535838
+20266729,6_spectrum_and_totals,True,worst wavelet-variance Z 0.72,0.7198158775757288,6.0,0.11996931292928814
+20266729,7_fold_stability,True,"4 folds, worst Z 2.69 (IDC_2d on expanding_2)",2.687679814273116,3.0,0.895893271424372
+20266729,8_scaling_drift,True,"rule=proportional, alpha in [0.5, 2.0]: worst IDC_1d_drift_log_mean 0.738 vs tol 1 at alpha=2; |IDC_15m drift| over the full sweep 2.48",0.7380718390587727,1.0,0.7380718390587727
+20267729,1_expected_rate,True,relative rate error 0.0365,0.03649998994914272,0.05,0.7299997989828544
+20267729,2_realised_rate_distribution,True,Z = 0.16 against bootstrap SE,0.16042334580918816,3.0,0.05347444860306272
+20267729,3_idc_envelope,True,100% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),1.0,0.6,0.6
+20267729,4_acf_no_systematic_bias,True,"worst ACF Z 1.33, systematic=False",1.332502533690684,3.0,0.44416751123022796
+20267729,5_episodes_and_tails,True,worst episode/tail Z 2.92,2.9171563231725735,3.0,0.9723854410575244
+20267729,6_spectrum_and_totals,True,worst wavelet-variance Z 0.79,0.788148234662575,6.0,0.13135803911042918
+20267729,7_fold_stability,True,"4 folds, worst Z 2.90 (IDC_2d on expanding_2)",2.898384653726183,3.0,0.9661282179087277
+20267729,8_scaling_drift,False,"rule=proportional, alpha in [0.5, 2.0]: worst rate_Z 3.51 vs tol 3 at alpha=8; |IDC_15m drift| over the full sweep 1.82",1.1698134572438919,1.0,1.1698134572438919
+20268729,1_expected_rate,True,relative rate error 0.0208,0.020814454472966593,0.05,0.41628908945933185
+20268729,2_realised_rate_distribution,True,Z = 0.09 against bootstrap SE,0.09148288622541816,3.0,0.03049429540847272
+20268729,3_idc_envelope,True,100% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),1.0,0.6,0.6
+20268729,4_acf_no_systematic_bias,True,"worst ACF Z 1.43, systematic=False",1.4316687654573619,3.0,0.4772229218191206
+20268729,5_episodes_and_tails,True,worst episode/tail Z 2.71,2.7091476285083624,3.0,0.9030492095027874
+20268729,6_spectrum_and_totals,True,worst wavelet-variance Z 0.79,0.7868367759480649,6.0,0.13113946265801082
+20268729,7_fold_stability,True,"4 folds, worst Z 2.79 (IDC_2d on expanding_2)",2.7905277090373684,3.0,0.9301759030124561
+20268729,8_scaling_drift,True,"rule=proportional, alpha in [0.5, 2.0]: worst rate_Z 2.72 vs tol 3 at alpha=1; |IDC_15m drift| over the full sweep 1.93",0.9081990247291315,1.0,0.9081990247291315
+20269729,1_expected_rate,True,relative rate error 0.0123,0.012267171889762007,0.05,0.24534343779524015
+20269729,2_realised_rate_distribution,True,Z = 0.05 against bootstrap SE,0.05391620000208399,3.0,0.01797206666736133
+20269729,3_idc_envelope,True,100% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),1.0,0.6,0.6
+20269729,4_acf_no_systematic_bias,True,"worst ACF Z 1.40, systematic=False",1.3952271617110776,3.0,0.46507572057035923
+20269729,5_episodes_and_tails,True,worst episode/tail Z 2.90,2.899453080999256,3.0,0.9664843603330854
+20269729,6_spectrum_and_totals,True,worst wavelet-variance Z 0.73,0.7253974723372161,6.0,0.12089957872286934
+20269729,7_fold_stability,True,"4 folds, worst Z 2.80 (IDC_2d on expanding_2)",2.797227133960071,3.0,0.9324090446533569
+20269729,8_scaling_drift,True,"rule=proportional, alpha in [0.5, 2.0]: worst IDC_1d_drift_log_mean 0.786 vs tol 1 at alpha=2; |IDC_15m drift| over the full sweep 2.37",0.7855887948313399,1.0,0.7855887948313399

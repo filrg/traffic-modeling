@@ -120,7 +120,7 @@ class CountModel:
 
     name = "base"
     rung: object = -1
-    # Compatibility metadata for existing artifacts; registries own selection policy.
+    # serialised with the model; the registries own selection
     role = "candidate"
 
     def __init__(self) -> None:

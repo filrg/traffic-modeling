@@ -14,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C
 from _common import plt
 
-
 # --- the fitted law ---------------------------------------------------
 
 

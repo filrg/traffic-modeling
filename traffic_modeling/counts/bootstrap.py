@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
+from typing import Any, Sequence
 
 import numpy as np
 import pandas as pd
 
-from .data import SCALES
 from .metrics import aggregate, idc
+from .series import SCALES
 
 
 def moving_block_bootstrap(
@@ -57,7 +58,7 @@ def segment_bootstrap(
     return moving_block_bootstrap(seg, min(block, max(len(seg) // 4, 1)), rng, n_out or len(x))
 
 
-BOOTSTRAPS: dict[str, Callable] = {
+BOOTSTRAPS: dict[str, Callable[..., np.ndarray]] = {
     "moving_block_24h": lambda x, rng, n: moving_block_bootstrap(x, 96, rng, n),
     "stationary_6h": lambda x, rng, n: stationary_bootstrap(x, 24, rng, n),
     "stationary_12h": lambda x, rng, n: stationary_bootstrap(x, 48, rng, n),
@@ -76,10 +77,19 @@ def bootstrap_metric_envelope(
     n_rep: int = 200,
     seed: int = 0,
     n_out: int | None = None,
+    block: int | None = None,
 ) -> pd.DataFrame:
-    """Return the median, 2.5%, 97.5% and SE of every metric under a resample."""
+    """Return the median, 2.5%, 97.5% and SE of every metric under a resample.
+
+    `block` overrides the named method with a stationary bootstrap of that many bins,
+    which is how a grid other than the 15-minute one asks for a 24-hour block.
+    """
     rng = np.random.default_rng(seed)
-    fn = BOOTSTRAPS[method]
+    fn: Callable[..., np.ndarray] = (
+        BOOTSTRAPS[method]
+        if block is None
+        else (lambda x, r, n, b=block: stationary_bootstrap(x, b, r, n))
+    )
     rows = [metric_fn(fn(x, rng, n_out or len(x))) for _ in range(n_rep)]
     frame = pd.DataFrame(rows)
     return pd.DataFrame(
@@ -148,7 +158,7 @@ def bootstrap_baseline_table(
 ) -> pd.DataFrame:
     """Score every bootstrap method against the trace with the shared metric set."""
     trace = metric_fn(np.asarray(x, dtype=float))
-    rows: list[dict] = []
+    rows: list[dict[str, Any]] = []
     for method in methods or list(BOOTSTRAPS):
         env = bootstrap_metric_envelope(x, metric_fn, method, n_rep=n_rep, seed=seed)
         for metric in trace.index:

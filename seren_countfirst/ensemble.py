@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .metrics import base_marginals
+from traffic_modeling.counts.metrics import base_marginals
+
 from .state import rebuild_model
 
 # must equal run_pipeline.config.SEED; a test pins the equality

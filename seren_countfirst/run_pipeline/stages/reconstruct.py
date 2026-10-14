@@ -6,9 +6,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ...data import ActivityScheme, CountSeries
+from traffic_modeling.counts.metrics import microstructure
+from traffic_modeling.counts.series import ActivityScheme, CountSeries
+
 from ...artifacts import write_csv
-from ...metrics import microstructure
 from ...models import CountModel
 from ...reconstruct import (
     OffsetTemplates,

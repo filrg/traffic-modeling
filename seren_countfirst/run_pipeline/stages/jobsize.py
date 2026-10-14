@@ -9,16 +9,17 @@ from typing import TypeAlias
 import numpy as np
 import pandas as pd
 from scipy import stats
+
 from traffic_modeling.datasets import DatasetCapability
 
 from ...artifacts import write_csv
 from ...jobsize import (
+    JOBSIZE_STATES,
+    TAIL_QUANTILE,
     ConditionalJobSize,
     EmpiricalJobSize,
-    JOBSIZE_STATES,
     LogNormalMixture,
     ScipyJobSize,
-    TAIL_QUANTILE,
     TwoPartJobSize,
     attach_activity,
     batch_frame,

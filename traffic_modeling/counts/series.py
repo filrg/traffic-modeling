@@ -163,7 +163,7 @@ def expanding_window_folds(
     if n < min_train + val_bins:
         return folds
     last_origin = n - val_bins
-    origins = np.linspace(min_train, last_origin, n_folds).astype(int)
+    origins: np.ndarray = np.linspace(min_train, last_origin, n_folds).astype(int)
     for k, origin in enumerate(np.unique(origins), start=1):
         folds.append(
             Split(
@@ -187,7 +187,10 @@ class ActivityScheme:
 
     @classmethod
     def fit(
-        cls, counts: CountSeries, quantiles=(0.50, 0.80, 0.95), busy_q: float = 0.80
+        cls,
+        counts: CountSeries,
+        quantiles: tuple[float, float, float] = (0.50, 0.80, 0.95),
+        busy_q: float = 0.80,
     ) -> "ActivityScheme":
         occupied = counts.values[counts.values > 0]
         if occupied.size == 0:
@@ -214,7 +217,7 @@ class ActivityScheme:
         if len(raw_edges) != 3:
             raise ValueError("activity scheme requires exactly three edges")
         return cls(
-            edges=cast(tuple[float, float, float], raw_edges),
+            edges=raw_edges,
             labels=tuple(blob["labels"]),
             busy_threshold=float(blob["busy_threshold"]),
             quiet_threshold=float(blob["quiet_threshold"]),
@@ -239,7 +242,8 @@ def hour_of_week(index: pd.DatetimeIndex) -> np.ndarray:
 def segment_profiles(counts: CountSeries, n_segments: int = 3) -> pd.DataFrame:
     """Return normalised hour-of-week profiles, one per contiguous segment."""
     hourly = counts.to_series().resample("1h").sum()
-    how = hourly.index.dayofweek * 24 + hourly.index.hour
+    index = cast(pd.DatetimeIndex, hourly.index)
+    how = index.dayofweek * 24 + index.hour
     frame = pd.DataFrame({"count": hourly.to_numpy(), "how": how})
     chunks = np.array_split(np.arange(len(frame)), n_segments)
     out = {}

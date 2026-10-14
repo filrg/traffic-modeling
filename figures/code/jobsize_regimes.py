@@ -178,9 +178,8 @@ def _measured(ax, x, y, lo, hi, color, ci: bool, clip: bool = True, zorder: int 
 def _band_rule(bulk, activity: np.ndarray, log_cut: float) -> tuple:
     """Return (classify, thresholds): the component whose fitted density is highest.
 
-    One partition of the size axis, applied to every job whatever its bin. The
-    rule is activity-free, so the shares it produces measure the trend rather
-    than restate it.
+    One activity-free partition of the size axis, applied to every job whatever
+    its bin.
     """
     mu_c, sd_c = bulk.mu + bulk.m, _component_sigma(bulk)
     prior = np.log(bulk.weights(activity).mean(axis=0))

@@ -8,8 +8,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from traffic_modeling.counts.series import ActivityScheme, CountSeries
+
 from ...artifacts import write_csv
-from ...data import ActivityScheme, CountSeries
 from ...jobsize import EmpiricalJobSize, TwoPartJobSize, assign_work, read_two_part_jobsize
 from ...models import CountModel
 from ...reconstruct import PatternTemplates, make_iid_mark_sampler, reconstruct_events

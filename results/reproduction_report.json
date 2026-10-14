@@ -1,0 +1,92 @@
+{
+  "environment": {
+    "package": "0.1.0",
+    "python": "3.14.6",
+    "numpy": "2.5.1",
+    "scipy": "1.18.0",
+    "pandas": "3.0.3",
+    "platform": "Windows 11",
+    "written_utc": "2026-10-14T15:29:26Z",
+    "argv": "--into results_release --verify"
+  },
+  "quick": false,
+  "total_seconds": 2696.4,
+  "stages": [
+    {
+      "stage": "data",
+      "seconds": 11.8,
+      "returncode": 0
+    },
+    {
+      "stage": "fit r2 r3 r4",
+      "seconds": 60.7,
+      "returncode": 0
+    },
+    {
+      "stage": "fit gated",
+      "seconds": 200.9,
+      "returncode": 0
+    },
+    {
+      "stage": "fit mm mm2 mm3 mm4 mm5",
+      "seconds": 69.8,
+      "returncode": 0
+    },
+    {
+      "stage": "fit onoff ingarch onoff_long ingarch_long nogate",
+      "seconds": 20.2,
+      "returncode": 0
+    },
+    {
+      "stage": "evaluate",
+      "seconds": 364.8,
+      "returncode": 0
+    },
+    {
+      "stage": "scaling",
+      "seconds": 76.2,
+      "returncode": 0
+    },
+    {
+      "stage": "horizon",
+      "seconds": 16.7,
+      "returncode": 0
+    },
+    {
+      "stage": "reconstruct",
+      "seconds": 16.9,
+      "returncode": 0
+    },
+    {
+      "stage": "baselines",
+      "seconds": 15.6,
+      "returncode": 0
+    },
+    {
+      "stage": "jobsize",
+      "seconds": 1014.6,
+      "returncode": 0
+    },
+    {
+      "stage": "jobsize_folds",
+      "seconds": 105.5,
+      "returncode": 0
+    },
+    {
+      "stage": "export",
+      "seconds": 2.1,
+      "returncode": 0
+    },
+    {
+      "stage": "workload",
+      "seconds": 21.5,
+      "returncode": 0
+    },
+    {
+      "stage": "certify",
+      "seconds": 699.2,
+      "returncode": 0
+    }
+  ],
+  "run_manifest": "run_manifest.json"
+}

@@ -16,8 +16,8 @@ from traffic_modeling.core import (
     ModelRef,
     model_spec_registry,
 )
+from traffic_modeling.counts.metrics import acf
 
-from ..metrics import acf
 from ..models import CountModel, IIDNegBin, NBGatedLatent, NBLatentAR
 from ..state import PipelineState
 

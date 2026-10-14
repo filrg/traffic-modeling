@@ -1,18 +1,17 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
-import json
 
 import numpy as np
 import pandas as pd
 from scipy import optimize, stats
 
-from .work import _stream_activity, batch_frame
-from .laws import EmpiricalJobSize, _lognormal_mean_below, _normal_below
 from .composition import CompositionJobSize
 from .conditional import ConditionalJobSize
-
+from .laws import EmpiricalJobSize, _lognormal_mean_below, _normal_below
+from .work import _stream_activity, batch_frame
 
 # work quantile above which a job is placed per bin rather than per job
 TAIL_QUANTILE = 0.99
@@ -81,9 +80,8 @@ class TwoPartJobSize:
     ) -> "TwoPartJobSize":
         """Split the sizes at `quantile`, then fit each part against its own data.
 
-        The generalized Pareto is fitted either way, but the default draws from the
-        observed exceedances: the fitted shape has no usable variance, so the
-        parametric tail is a diagnostic rather than the frozen law.
+        The generalized Pareto is always fitted and kept as a diagnostic; unless
+        `tail_kind` is "genpareto", the tail draws from the observed exceedances.
         """
         sizes = jobs["job_size"].to_numpy(dtype=float)
         cut = float(np.quantile(sizes, quantile))

@@ -3,9 +3,9 @@ from __future__ import annotations
 from copy import deepcopy
 
 from traffic_modeling.core import DatasetRef, ModelRef, RunSpec, config_fingerprint
+from traffic_modeling.counts.series import BASE_FREQ
 
 from ..candidates import LONG_ACF_LAGS, MM4_TEXTURE
-from ..data import BASE_FREQ
 from .config import (
     AUDIT,
     CERTIFY_SEEDS,
@@ -36,9 +36,8 @@ _RESOLVED_CONFIG: dict[str, object] = {
         "reconstruction": N_PATHS_RECONSTRUCT,
         "scaling": N_PATHS_SCALING,
     },
+    "fit_targets": dict(FIT_TARGETS),
     "reconstruct_alphas": RECONSTRUCT_ALPHAS,
-    # Keep the legacy field name so existing run fingerprints remain stable.
-    "rung_keys": dict(FIT_TARGETS),
 }
 
 

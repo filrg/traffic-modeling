@@ -1,0 +1,9 @@
+name,passed,detail,value,threshold
+1_expected_rate,True,relative rate error 0.0002,0.0002275681615643288,0.05
+2_realised_rate_distribution,True,Z = 0.00 against bootstrap SE,0.0010001987926205227,3.0
+3_idc_envelope,False,17% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),0.16666666666666666,0.6
+4_acf_no_systematic_bias,False,"worst ACF Z 7.39, systematic=True",7.3854720171087465,3.0
+5_episodes_and_tails,False,worst episode/tail Z 6.43,6.427527306708307,3.0
+6_spectrum_and_totals,True,worst wavelet-variance Z 5.91,5.912443054553723,6.0
+7_fold_stability,False,"4 folds, worst Z 8.64 (ACF_lag1 on expanding_1)",8.643528907892888,3.0
+8_scaling_drift,False,not evaluated: no scaling report (see scaling.scaling_report),,1.0

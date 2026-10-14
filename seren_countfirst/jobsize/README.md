@@ -1,39 +1,24 @@
 # jobsize
 
-Durations to work units, and the laws fitted to them. Separate from the arrival
-generator: the two share the trace and nothing else, and the arrival generator
-stays size-agnostic.
+Job durations to work units, and the size laws fitted to them. The arrival
+generator does not depend on this package; the two meet only in `assign_work`.
 
-A size is **the work the cluster absorbed**, never seconds. A duration is what a
-job took on the GPU count the scheduler happened to give it, so it is inverted
-through the simulator's own A100 latency model at the trace's operating point.
-That inversion is an identity, not an estimate, and the stage raises if it fails
-to round-trip.
+A size is the work the cluster absorbed, over completed, failed and cancelled
+jobs: the job's duration inverted through an A100 latency model at the trace's
+operating point, so it does not depend on the GPU count the job ran on.
 
-| module | holds |
+| module | contents |
 |---|---|
-| `work.py` | canonical job-state scope, the A100 inversion, activity attachment, and batch/bin helpers |
-| `laws.py` | the marginal laws: lognormal mixture, the scipy candidates, the empirical pool, and their json readers |
-| `latent.py` | `SizeLatent`, a two-scale stationary bin level, and the within-batch variance it is calibrated against |
-| `composition.py` | `CompositionJobSize` — the frozen bulk law: the component belongs to the job, and activity moves the weights, not the level |
-| `conditional.py` | `ConditionalJobSize` — the superseded design where activity moves the level, kept as the recorded alternative |
-| `two_part.py` | `TwoPartJobSize` — bulk drawn per job, the top 1% placed per bin at a rate free of the job count |
-| `folds.py` | rolling-origin windows, per-window scoring, and `assign_work`, the one function the arrival half calls |
+| `work.py` | the A100 inversion and the bin activity of each job |
+| `laws.py` | marginal laws: lognormal mixture, scipy families, the empirical pool |
+| `composition.py` | `CompositionJobSize`: a mixture whose weights move with bin activity |
+| `two_part.py` | `TwoPartJobSize`: the bulk drawn per job, the top 1% placed per bin |
+| `conditional.py` | `ConditionalJobSize`: the alternative where activity moves the level |
+| `latent.py` | `SizeLatent`: a bin-level latent, off by default |
+| `folds.py` | rolling-origin validation and `assign_work` |
 
-## Three laws are frozen, not one
-
-- `results/jobsize_model.json` — the marginal: a 3-component lognormal mixture.
-- `results/jobsize_conditional.json` — adds the batch level and the activity slope.
-- `results/jobsize_two_part.json` — the bulk/tail split that the workload stage uses.
-
-Always say which fit a number came from: dropping the top 1% moves the largest
-component's median from 47,475 (marginal fit, all jobs) to about 120,000 (bulk
-fit, sub-threshold jobs).
-
-`k = 3` is a declared modelling choice, not a selection. AIC and BIC keep
-improving through k = 6, and held-out likelihood cannot separate any k from any
-other. `docs/design-notes.md` 3c carries the measurements.
-
-`SizeLatent` is real and is off by default: it cannot be added to the composition
-bulk additively, because the variance budget is already full. The principled
-version drives the weights.
+The `jobsize` stage writes three laws to `results/`: the marginal three-component
+lognormal mixture (`jobsize_model.json`), the conditional law
+(`jobsize_conditional.json`) and the two-part law the workload uses
+(`jobsize_two_part.json`). Three components is a modelling choice; neither AIC,
+BIC nor held-out likelihood selects the number.

@@ -5,7 +5,8 @@ from collections.abc import Sequence
 import numpy as np
 import pandas as pd
 
-from .metrics import acf, idc_curve
+from traffic_modeling.counts.metrics import acf, idc_curve
+
 from .reconstruct import collision_risk
 
 DEFAULT_ALPHAS: tuple = (0.5, 1.0, 2.0, 4.0, 8.0)
@@ -99,8 +100,7 @@ def scaling_report(
                     "ACF_lag1": float(acf_a[1]),
                     "ACF_lag1_drift": float(acf_a[1] - ref_acf[1]),
                     "ACF_lag96_drift": float(acf_a[96] - ref_acf[96]),
-                    # path-averaged drift: a one-path day-scale IDC is mostly
-                    # sampling error, so gate 8 grades these columns
+                    # path-averaged drift, the columns gate 8 grades
                     "IDC_15m_drift_log_mean": float(np.log(idc_mean["15m"] / ref_idc_mean["15m"])),
                     "IDC_1d_drift_log_mean": float(np.log(idc_mean["1d"] / ref_idc_mean["1d"])),
                     "ACF_lag1_drift_mean": float(acf_mean[1] - ref_acf_mean[1]),

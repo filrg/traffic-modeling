@@ -1,13 +1,25 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import numpy as np
 import pandas as pd
+from scipy.special import expit, logit
 
-from ..metrics import run_lengths
+from traffic_modeling.counts.metrics import run_lengths
+
 from ..models.base import CountModel
 from ..models.nb import nb2_sample
+from .calibration import GeometricMoments, solve_debiased
 
 _EPS = 1e-9
+# (ON share, chain persistence, ON dispersion) starting points for the debiased route
+_DEBIASED_STARTS = tuple(
+    np.array([logit(pi_on), logit(phi), np.log(kappa)])
+    for pi_on in (0.05, 0.2, 0.6)
+    for phi in (0.7, 0.97, 0.998)
+    for kappa in (0.3, 2.0)
+)
 
 
 def _chain_from_indicator(active: np.ndarray) -> tuple:
@@ -31,7 +43,7 @@ class ONOFFCounts(CountModel):
     """
 
     name = "onoff_nb"
-    rung = None  # not a rung: discrete regime chains are out of scope here
+    rung = None
     role = "benchmark"
 
     def __init__(self, emission: str = "nb") -> None:
@@ -83,6 +95,82 @@ class ONOFFCounts(CountModel):
         model.params_["zero_frac_gap"] = float(implied["P_zero"] - (n == 0).mean())
         model.params_["n_params"] = 3 + (emission == "nb")
         # moment-calibrated: `report` stays None, so there is no AIC to quote
+        return model
+
+    @classmethod
+    def calibrate_debiased(
+        cls,
+        mean: float,
+        variance: float,
+        zero_fraction: float,
+        acf_1h: float,
+        acf_long: Mapping[int, float],
+        n_bins: int,
+        seed: int = 0,
+        **kwargs,
+    ) -> "ONOFFCounts":
+        """Calibrate the NB-emission chain to `NBGatedLatent.calibrate_debiased`'s targets.
+
+        `lambda_on = mean / pi_on` matches the mean exactly. The ON share, the
+        chain persistence and the ON dispersion minimise one loss over the
+        variance, the zero fraction, the hourly lag-1 ACF and the long-lag ACF,
+        the last corrected for attenuation at `n_bins`. Persistence is confined
+        to `0 < 1 - p01 - p10 < 1`.
+        """
+        m = float(mean)
+
+        def unpack(theta: np.ndarray) -> tuple[float, float, float]:
+            pi_on = float(expit(np.clip(theta[0], -12.0, 12.0)))
+            phi = float(expit(np.clip(theta[1], -12.0, 12.0)))
+            return pi_on, phi, float(np.exp(np.clip(theta[2], -8.0, 8.0)))
+
+        def build(theta: np.ndarray) -> "ONOFFCounts":
+            pi_on, phi, kappa = unpack(theta)
+            model = cls(emission="nb")
+            model.params_ = {
+                "p01": (1.0 - phi) * pi_on,
+                "p10": (1.0 - phi) * (1.0 - pi_on),
+                "pi_on": pi_on,
+                "lambda_on": m / pi_on,
+                "kappa": kappa,
+                "mean": m,
+            }
+            return model
+
+        def moments(theta: np.ndarray) -> GeometricMoments:
+            implied = build(theta).implied_marginals()
+            phi = float(implied["gate_phi"])
+            return GeometricMoments(
+                variance=float(implied["variance"]),
+                amplitude=float(implied["acf_lag1"]) / phi,
+                decay=phi,
+                zero_prob=float(implied["P_zero"]),
+            )
+
+        theta, report = solve_debiased(
+            moments,
+            build,
+            _DEBIASED_STARTS,
+            variance=float(variance),
+            zero_fraction=float(zero_fraction),
+            acf_1h=float(acf_1h),
+            acf_long=acf_long,
+            n_bins=n_bins,
+            seed=seed,
+            **kwargs,
+        )
+        model = build(theta)
+        p = model.params_
+        p.update(
+            {
+                "mean_off_run_bins": float(1.0 / p["p01"]),
+                "mean_on_run_bins": float(1.0 / p["p10"]),
+                "implied_zero_frac": float(model.implied_marginals()["P_zero"]),
+                "n_params": 4,
+                **report,
+            }
+        )
+        model.name = "onoff_nb_long"
         return model
 
     def fit(self, counts: np.ndarray, emission: str | None = None, **kwargs) -> "ONOFFCounts":

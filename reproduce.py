@@ -10,12 +10,11 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
-from seren_countfirst.provenance import environment  # noqa: E402
 from seren_countfirst.artifacts import write_json  # noqa: E402
+from seren_countfirst.provenance import environment  # noqa: E402
 from seren_countfirst.run_pipeline import REPRODUCTION_STEPS  # noqa: E402
 
-# (argv, approximate minutes, whether --quick skips it). `fit` consumes the rest
-# of its line as rung names, so it cannot share an invocation with another stage.
+# (argv, approximate minutes, skipped by --quick)
 STAGES: list[tuple[list[str], float, bool]] = [
     (list(step.argv), step.approximate_minutes, step.skip_in_quick_run)
     for step in REPRODUCTION_STEPS
@@ -92,7 +91,7 @@ def main() -> None:
         "--quick",
         action="store_true",
         help="skip jobsize, jobsize_folds, dependent workload, and certify "
-        "(~60 of the ~80 minutes)",
+        "(~30 of the ~45 minutes)",
     )
     ap.add_argument(
         "--verify",

@@ -7,8 +7,8 @@ import pandas as pd
 from scipy import optimize
 from scipy.special import logsumexp
 
-from .work import _stream_activity
 from .laws import LogNormalMixture, _lognormal_mean_below, _normal_below
+from .work import _stream_activity
 
 
 @dataclass

@@ -5,16 +5,12 @@ from pathlib import Path
 import pandas as pd
 
 from ..core import DatasetRef, sha256_file
-from .base import DatasetCapability, TraceDataset
-
-
-class DatasetIntegrityError(ValueError):
-    pass
-
-
-class DatasetSchemaError(ValueError):
-    pass
-
+from .base import (
+    DatasetCapability,
+    DatasetIntegrityError,
+    DatasetSchemaError,
+    TraceDataset,
+)
 
 _RAW_COLUMNS = frozenset(
     {

@@ -3,8 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ..data import expanding_window_folds
-from ..evaluation import GateEvidence, evaluate_gates, evaluate_on_folds
+from traffic_modeling.counts.folds import evaluate_on_folds
+from traffic_modeling.counts.gates import GateEvidence, evaluate_gates
+from traffic_modeling.counts.series import expanding_window_folds
+
 from ..state import PipelineState
 from .config import FOLD_KWARGS, N_PATHS_EVAL, N_PATHS_FOLD
 

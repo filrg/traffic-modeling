@@ -11,7 +11,8 @@ from .artifacts import write_csv, write_json, write_npy
 from .paths import STATE_DIR
 
 if TYPE_CHECKING:
-    from .data import ActivityScheme, CountSeries
+    from traffic_modeling.counts.series import ActivityScheme, CountSeries
+
     from .models import CountModel
 
 OUT = STATE_DIR
@@ -91,7 +92,7 @@ def load_portable_state(out: Path = OUT) -> PipelineState:
     Returns an empty dict when no state has been written, so the first pipeline
     stage can start from nothing.
     """
-    from .data import ActivityScheme, CountSeries
+    from traffic_modeling.counts.series import ActivityScheme, CountSeries
 
     meta_path = out / "meta.json"
     if not meta_path.exists():
@@ -138,7 +139,6 @@ def _model_entry(model: CountModel, previous: ModelEntry | None = None) -> Model
         "class": type(model).__name__,
         "name": model.name,
         "rung": _jsonable(getattr(model, "rung", None)),
-        # Preserve the published table schema; selection now comes from the registry.
         "role": getattr(model, "role", "candidate"),
         "params": {k: _jsonable(v) for k, v in model.params_.items()},
         "fit": fit,

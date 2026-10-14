@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -86,12 +86,17 @@ def _string(payload: Mapping[str, Any], key: str) -> str:
     return value
 
 
-def _require_keys(payload: Mapping[str, Any], expected: set[str], label: str) -> None:
-    actual = set(payload)
-    if actual != expected:
-        missing = sorted(expected - actual)
-        extra = sorted(actual - expected)
-        raise ValueError(f"invalid {label} fields; missing={missing}, extra={extra}")
+def require_keys(payload: Mapping[str, Any], expected: Collection[str], label: str) -> None:
+    expected_keys, actual = set(expected), set(payload)
+    if actual != expected_keys:
+        raise ValueError(
+            f"invalid {label} fields; missing={sorted(expected_keys - actual)}, "
+            f"extra={sorted(actual - expected_keys)}"
+        )
+
+
+_DATASET_FIELDS = ("provider", "dataset", "version", "subset", "split", "content_hash")
+_MODEL_FIELDS = ("framework", "algorithm", "variant")
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,39 +109,21 @@ class DatasetRef:
     content_hash: str
 
     def __post_init__(self) -> None:
-        for field in ("provider", "dataset", "version", "subset", "split"):
+        for field in _DATASET_FIELDS[:-1]:
             validate_identifier(getattr(self, field), field)
         validate_sha256(self.content_hash, "content_hash")
 
     @property
     def key(self) -> str:
-        return "/".join((self.provider, self.dataset, self.version, self.subset, self.split))
+        return "/".join(getattr(self, field) for field in _DATASET_FIELDS[:-1])
 
     def to_dict(self) -> dict[str, str]:
-        return {
-            "provider": self.provider,
-            "dataset": self.dataset,
-            "version": self.version,
-            "subset": self.subset,
-            "split": self.split,
-            "content_hash": self.content_hash,
-        }
+        return {field: getattr(self, field) for field in _DATASET_FIELDS}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> DatasetRef:
-        _require_keys(
-            payload,
-            {"provider", "dataset", "version", "subset", "split", "content_hash"},
-            "DatasetRef",
-        )
-        return cls(
-            provider=_string(payload, "provider"),
-            dataset=_string(payload, "dataset"),
-            version=_string(payload, "version"),
-            subset=_string(payload, "subset"),
-            split=_string(payload, "split"),
-            content_hash=_string(payload, "content_hash"),
-        )
+        require_keys(payload, _DATASET_FIELDS, "DatasetRef")
+        return cls(*(_string(payload, field) for field in _DATASET_FIELDS))
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,28 +133,20 @@ class ModelRef:
     variant: str
 
     def __post_init__(self) -> None:
-        for field in ("framework", "algorithm", "variant"):
+        for field in _MODEL_FIELDS:
             validate_identifier(getattr(self, field), field)
 
     @property
     def key(self) -> str:
-        return "/".join((self.framework, self.algorithm, self.variant))
+        return "/".join(getattr(self, field) for field in _MODEL_FIELDS)
 
     def to_dict(self) -> dict[str, str]:
-        return {
-            "framework": self.framework,
-            "algorithm": self.algorithm,
-            "variant": self.variant,
-        }
+        return {field: getattr(self, field) for field in _MODEL_FIELDS}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> ModelRef:
-        _require_keys(payload, {"framework", "algorithm", "variant"}, "ModelRef")
-        return cls(
-            framework=_string(payload, "framework"),
-            algorithm=_string(payload, "algorithm"),
-            variant=_string(payload, "variant"),
-        )
+        require_keys(payload, _MODEL_FIELDS, "ModelRef")
+        return cls(*(_string(payload, field) for field in _MODEL_FIELDS))
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,16 +215,9 @@ class RunSpec:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> RunSpec:
-        _require_keys(
+        require_keys(
             payload,
-            {
-                "schema_version",
-                "dataset",
-                "model",
-                "evaluation_suite",
-                "seed",
-                "config_hash",
-            },
+            ("schema_version", "dataset", "model", "evaluation_suite", "seed", "config_hash"),
             "RunSpec",
         )
         dataset = payload.get("dataset")

@@ -1,0 +1,2 @@
+name,passed,detail,value,threshold
+1_expected_rate,False,relative rate error 0.1314,0.13141752266468343,0.05

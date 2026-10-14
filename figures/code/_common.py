@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 
 import matplotlib as mpl
 import numpy as np
@@ -16,11 +16,11 @@ from matplotlib.lines import Line2D
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from seren_countfirst.artifacts import write_csv as atomic_write_csv
 from seren_countfirst.ensemble import (
+    BINS_PER_DAY,
     DISPLAY_CANDIDATES,
     DISPLAY_OFFSET,
     PEAK_Q,
     SEED,
-    BINS_PER_DAY,
     calibrated,
     closest_to_trace,
     daily_peaks,
@@ -74,8 +74,8 @@ MODEL_DASH = (0, (5, 1.6))
 SERIES = [
     ("gated_mm4", "GLI-NB", "#2a78d6"),
     ("gated_nogate", "LI-NB", "#eb6834"),
-    ("onoff", "ON/OFF", "#1baf7a"),
-    ("ingarch", "NB-INGARCH", "#4a3aa7"),
+    ("onoff_long", "ON/OFF", "#1baf7a"),
+    ("ingarch_long", "NB-INGARCH", "#4a3aa7"),
 ]
 
 

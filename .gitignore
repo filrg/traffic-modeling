@@ -11,14 +11,21 @@ venv/
 
 .idea/
 .vscode/
+.claude/
 .DS_Store
 
 trace_seren.csv
 
 docs/
+AGENTS.md
 CLAUDE.md
 
-results/
+# third-party papers; never commit or publish
+papers/
+
+# downloaded third-party traces
+traces/
+
 results_check/
 results_*/
 runs/

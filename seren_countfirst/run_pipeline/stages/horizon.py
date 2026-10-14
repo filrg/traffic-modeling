@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-
 import pandas as pd
 
+from traffic_modeling.counts.folds import scale_support
+
 from ...artifacts import write_csv
-from ...evaluation import horizon_distribution, scale_support
+from ...evaluation import horizon_distribution
 from ..config import N_PATHS_HORIZON
 from ..context import PipelineContext, resolve_context
 from ..state import fitted_models

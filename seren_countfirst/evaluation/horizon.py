@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import numpy as np
 import pandas as pd
 
-from ..metrics import episode_stats, rolling_tails
+from traffic_modeling.counts.metrics import episode_stats, rolling_tails
 
 HORIZON_DAYS: tuple = (1, 7, 30, 90, 180)
 

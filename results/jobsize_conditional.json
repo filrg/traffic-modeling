@@ -1,0 +1,34 @@
+{
+  "name": "conditional_lognormal_mixture",
+  "n_components": 1,
+  "mu": 11.63110352475616,
+  "beta": -0.42818488877524014,
+  "sigma_w": [
+    0.8573602365498648
+  ],
+  "weights": [
+    1.0
+  ],
+  "m": [
+    0.0
+  ],
+  "s_batch": [
+    1.8284210615096816
+  ],
+  "s_job": [
+    2.019452934185155
+  ],
+  "latent": null,
+  "fit": {
+    "converged": true,
+    "n_iter": 3,
+    "grad_norm": 0.0,
+    "loglik": -135661.42228838726,
+    "n_params": 2,
+    "n_obs": 63938,
+    "AIC": 271326.8445767745,
+    "BIC": 271344.9759150601,
+    "boundary_warnings": [],
+    "restarts": 10
+  }
+}

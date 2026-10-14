@@ -1,0 +1,42 @@
+{
+  "trace_sha256": "747854c73ce8b3263b764aa9ff8d866d89903705d31fcd0e0520c33dd14af9a1",
+  "n_bins": 13272,
+  "busy_threshold": 25.0,
+  "trace_marginals": {
+    "mean": 3.7482670283303197,
+    "IDC_15m": 73.16087777449046,
+    "zero_frac": 0.7746383363471971,
+    "acf_1h_lag1": 0.6648707971368836,
+    "max_bin": 530.0
+  },
+  "trace_idc": {
+    "15m": 73.16087777449046,
+    "1h": 204.282221195717,
+    "6h": 749.1306540078302,
+    "1d": 1679.1205238213358,
+    "2d": 2296.324459729599,
+    "4d": 3385.6426387836314,
+    "7d": 4178.801389756647
+  },
+  "split_bounds": [
+    7963,
+    10617
+  ],
+  "activity_scheme": {
+    "edges": [
+      7.0,
+      25.0,
+      84.0
+    ],
+    "labels": [
+      "low",
+      "medium",
+      "high",
+      "extreme"
+    ],
+    "busy_threshold": 25.0,
+    "quiet_threshold": 0.0,
+    "source": "train"
+  },
+  "winner": "gated_mm4"
+}

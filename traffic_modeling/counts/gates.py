@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
 
-from ..metrics import metric_vector, z_table
+from .metrics import DEFAULT_METRICS, MetricSpec, metric_vector, z_table
 
 
 @dataclass
@@ -111,7 +111,7 @@ def scaling_drift_gate(evidence: GateEvidence) -> tuple[bool, str, float, float]
     if band.empty:
         return False, f"no alpha in the operating range [{lo}, {hi}]", np.nan, 1.0
 
-    checks: list[tuple] = []
+    checks: list[tuple[str, float, float, float]] = []
     se = sub["sd_total"].to_numpy(dtype=float) / np.sqrt(sub["n_paths"].to_numpy(dtype=float))
     z_rate = np.abs(
         sub["mean_total"].to_numpy(dtype=float) - sub["expected_total"].to_numpy(dtype=float)
@@ -186,7 +186,11 @@ def _realised_rate(
     z_tolerance: float,
 ) -> GateResult:
     means = np.array([path.mean() for path in paths])
-    standard_error = envelope.loc["mean", "se"] if "mean" in envelope.index else np.nan
+    standard_error = (
+        float(np.asarray(envelope.loc["mean", "se"], dtype=float))
+        if "mean" in envelope.index
+        else np.nan
+    )
     z_score = abs(means.mean() - trace["mean"]) / max(standard_error, 1e-12)
     return _result(
         "2_realised_rate_distribution",
@@ -290,6 +294,20 @@ def _spectrum(z_scores: pd.DataFrame, z_tolerance: float) -> GateResult:
     )
 
 
+def _measurer(busy_threshold: float, metrics: MetricSpec) -> Callable[[np.ndarray], pd.Series]:
+    def measure(x: np.ndarray) -> pd.Series:
+        return metric_vector(
+            x,
+            busy_threshold,
+            quiet_threshold=metrics.quiet_threshold,
+            acf_lags=metrics.acf_lags,
+            rolling_windows=metrics.rolling_windows,
+            scales=metrics.scales,
+        )
+
+    return measure
+
+
 def evaluate_gates(
     trace_counts: np.ndarray,
     syn_paths: Sequence[np.ndarray],
@@ -299,13 +317,15 @@ def evaluate_gates(
     rate_tol: float = 0.05,
     stop_at_first_failure: bool = True,
     evidence: GateEvidence | None = None,
+    metrics: MetricSpec = DEFAULT_METRICS,
 ) -> GateReport:
     """Run the eight structural gates in order."""
     evidence = evidence or GateEvidence()
     trace_counts = np.asarray(trace_counts, dtype=float)
     paths = [np.asarray(path, dtype=float) for path in syn_paths]
-    synthetic = pd.DataFrame([metric_vector(path, busy_threshold) for path in paths]).mean()
-    trace = metric_vector(trace_counts, busy_threshold)
+    measure = _measurer(busy_threshold, metrics)
+    synthetic = pd.DataFrame([measure(path) for path in paths]).mean()
+    trace = measure(trace_counts)
     z_scores = z_table(synthetic, trace, envelope["se"])
 
     first_six = (

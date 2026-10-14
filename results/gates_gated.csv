@@ -1,0 +1,5 @@
+name,passed,detail,value,threshold
+1_expected_rate,True,relative rate error 0.0033,0.0033133991329460377,0.05
+2_realised_rate_distribution,True,Z = 0.01 against bootstrap SE,0.014562923870639378,3.0
+3_idc_envelope,True,67% of 6 scales inside envelope (scale-matched blocks; ungraded: 7d),0.6666666666666666,0.6
+4_acf_no_systematic_bias,False,"worst ACF Z 5.85, systematic=True",5.845883117127466,3.0

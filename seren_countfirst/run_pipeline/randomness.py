@@ -19,7 +19,7 @@ class SeedStream(IntEnum):
 
 
 def seed(stream: SeedStream, replicate: int = 0, *, base: int = SEED) -> int:
-    """Return a legacy-compatible seed for one named random stream."""
+    """Return the seed of one named random stream."""
     return base + int(stream) + int(replicate)
 
 

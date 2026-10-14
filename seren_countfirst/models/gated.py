@@ -9,12 +9,17 @@ import scipy.sparse.linalg as spla
 from scipy.optimize import brentq, minimize
 from scipy.special import expit, roots_hermitenorm
 
-from ..metrics import (
+from traffic_modeling.counts.metrics import (
     HOURLY_ACF_LAG_WEIGHTS,
-    acf as _acf,
-    aggregate as _aggregate,
     hourly_acf1_from_autocov,
 )
+from traffic_modeling.counts.metrics import (
+    acf as _acf,
+)
+from traffic_modeling.counts.metrics import (
+    aggregate as _aggregate,
+)
+
 from .ar1 import (
     ar1_logdet_precision,
     ar1_path,

@@ -12,7 +12,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C
 from _common import plt
 
-
 # --- the gap side -----------------------------------------------------
 
 
@@ -36,7 +35,7 @@ _CACHE: dict = {}
 
 def _trace_events(st) -> tuple:
     """Return trace batch times in seconds from the first bin edge, sizes and classes."""
-    from seren_countfirst.data import ActivityScheme
+    from traffic_modeling.counts.series import ActivityScheme
 
     counts = st["counts"]
     times_s = (
@@ -62,9 +61,9 @@ def ensemble() -> dict:
     without which a gap statistic reads per-path volume instead of shape.
     """
     from seren_countfirst.reconstruct import (
-        make_iid_mark_sampler,
         OffsetTemplates,
         PatternTemplates,
+        make_iid_mark_sampler,
         reconstruct_events,
     )
 
@@ -301,8 +300,8 @@ def idi() -> None:
 
 def idc_ceiling() -> None:
     """Count dispersion against the ceiling a finite-variance renewal is held under."""
-    from seren_countfirst.data import SCALES
-    from seren_countfirst.metrics import idc_curve
+    from traffic_modeling.counts.metrics import idc_curve
+    from traffic_modeling.counts.series import SCALES
 
     e = ensemble()
     x, bin_s = e["counts"], e["bin_s"]
@@ -548,7 +547,7 @@ TICKS = ("2", "4", "8", "16", "32", "64", "128", "256+")
 
 def _events(st) -> tuple:
     """Trace batch times in seconds from the first bin edge, with sizes and classes."""
-    from seren_countfirst.data import ActivityScheme
+    from traffic_modeling.counts.series import ActivityScheme
 
     counts = st["counts"]
     t = (pd.DatetimeIndex(st["batch_times"]) - counts.index[0]).total_seconds().to_numpy(float)
@@ -606,9 +605,9 @@ def _independent(occ: np.ndarray) -> pd.Series:
 def clustering() -> None:
     """Within-bin clustering against bin occupancy, trace against two placements."""
     from seren_countfirst.reconstruct import (
-        make_iid_mark_sampler,
         OffsetTemplates,
         PatternTemplates,
+        make_iid_mark_sampler,
         reconstruct_events,
     )
 

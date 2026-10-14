@@ -1,18 +1,17 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-import json
 
 import numpy as np
 import pandas as pd
 
 from ..models.base import FitReport
-from .work import _stream_activity, batch_frame
-from .laws import LogNormalMixture
 from .latent import SizeLatent, within_batch_variance
-
+from .laws import LogNormalMixture
+from .work import _stream_activity, batch_frame
 
 # component counts scanned when the caller does not fix one
 COMPONENT_ORDERS = (1, 2, 3, 4, 5)
@@ -239,8 +238,8 @@ class ConditionalJobSize:
         """Draw one work unit per job, batch by batch, in the order given.
 
         `alpha` superposes that many unit-load streams, so a batch reads its own
-        stream's share of the bin rather than the aggregate: sizes then do not
-        move with load, which is what the superposition reading of load requires.
+        stream's share of the bin rather than the aggregate and sizes do not move
+        with load.
         """
         if self.latent is not None and bin_index is None:
             raise ValueError("this law carries a bin level: pass bin_index to place it")

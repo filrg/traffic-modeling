@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from traffic_modeling.counts.bootstrap import bootstrap_baseline_table
+from traffic_modeling.counts.metrics import metric_vector
 
 from ...artifacts import write_csv
-from ...metrics import metric_vector
-from ...bootstrap import bootstrap_baseline_table
 from ..context import PipelineContext, resolve_context
 
 

@@ -3,8 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ..data import BASE_FREQ
-
+from traffic_modeling.counts.series import BASE_FREQ
 
 # A100 latency coefficients at the trace's hardware
 A100_ALPHA_T = 0.0050

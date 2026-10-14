@@ -3,18 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..state import PipelineState, rebuild_model
-from .context import default_context
 
 if TYPE_CHECKING:
     from ..models import CountModel
-
-
-def load_state() -> PipelineState:
-    return default_context().load_state()
-
-
-def save_state(state: PipelineState) -> None:
-    default_context().save_state(state)
 
 
 def fitted_models(state: PipelineState) -> dict[str, CountModel]:

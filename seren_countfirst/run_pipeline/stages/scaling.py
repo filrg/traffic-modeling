@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from ...artifacts import write_csv
 from ...scaling import scaling_report
 from ...state import PipelineState
@@ -17,8 +16,7 @@ def stage_scaling(context: PipelineContext | None = None) -> None:
     model = fitted_models(state)[name]
     rep = scaling_report(model, state["n_bins"], n_paths=N_PATHS_SCALING, seed=context.seed)
     write_csv(rep, context.result("scaling_report.csv"), index=False)
-    # gate 8 grades the *_mean columns; the single-path ones are kept for
-    # continuity but are too noisy to read
+    # gate 8 grades the path-averaged *_mean columns
     cols = [
         "kappa_rule",
         "alpha",

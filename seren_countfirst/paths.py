@@ -27,7 +27,7 @@ STATE_DIR = _from_env("SEREN_STATE_DIR", RESULTS / "state_portable_data" / "stat
 
 
 class RunPathMode(StrEnum):
-    LEGACY = "legacy"
+    DEFAULT = "default"
     NAMESPACED = "namespaced"
 
 
@@ -49,7 +49,7 @@ def resolve_run_paths(
     run_spec: RunSpec,
     environ: Mapping[str, str] | None = None,
 ) -> RunPaths:
-    """Resolve legacy or opt-in namespaced storage from one environment snapshot."""
+    """Resolve the default or opt-in namespaced storage from one environment snapshot."""
     values = os.environ if environ is None else environ
     runs_dir = values.get("SEREN_RUNS_DIR")
     if runs_dir:
@@ -78,4 +78,4 @@ def resolve_run_paths(
         if values.get("SEREN_STATE_DIR")
         else results / _STATE_RELATIVE_PATH
     )
-    return RunPaths(mode=RunPathMode.LEGACY, results=results, state=state)
+    return RunPaths(mode=RunPathMode.DEFAULT, results=results, state=state)

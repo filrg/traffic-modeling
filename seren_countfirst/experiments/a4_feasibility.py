@@ -6,18 +6,18 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import brentq
 
-from ..bootstrap import bootstrap_metric_envelope
-from ..evaluation import benchmark_table, evaluate_model
-from ..metrics import (
+from traffic_modeling.counts.bootstrap import bootstrap_metric_envelope
+from traffic_modeling.counts.metrics import (
     HOURLY_ACF_LAG_WEIGHTS,
     acf,
     base_marginals,
     hourly_acf1_from_autocov,
     metric_vector,
 )
+
 from ..baselines import NBRegimeSwitch
-from ..models import IIDNegBin, NBLatentAR, marginal_feasibility
-from ..models import NBGatedLatent
+from ..evaluation import benchmark_table, evaluate_model
+from ..models import IIDNegBin, NBGatedLatent, NBLatentAR, marginal_feasibility
 
 # Seren SFT subset, 15-minute batch counts
 TRACE = {
@@ -153,7 +153,7 @@ def _gated_moment(x: np.ndarray):
     )
 
 
-# sized by gate 1, as in the pipeline; same value as N_PATHS_EVAL
+# the pipeline's N_PATHS_EVAL
 N_PATHS_LADDER = 1200
 
 
@@ -201,8 +201,7 @@ def main(
             f"   median {ens[k].median():9.4f}   per-path CV {ens[k].std(ddof=1) / ens[k].mean():.3f}"
         )
 
-    # one realisation, picked by total log-distance from the ensemble median
-    # across all four facts; the mean alone does not identify a typical path
+    # the run nearest the ensemble median in total log-distance over the four facts
     dev = sum((np.log(ens[k] / ens[k].median())).abs() for k in targets)
     pick = int(dev.idxmin())
     surrogate = draws[pick]
@@ -227,8 +226,6 @@ def main(
         seed=seed,
     )
 
-    # each entry builds its own estimate: the rungs are not all fitted the same
-    # way, and 4b is moment-calibrated in production
     candidates = [
         ("rung 2  iid NB", lambda x: IIDNegBin().fit(x)),
         ("rung 3  NB + 1 AR", lambda x: NBLatentAR(1).fit(x, n_restarts=2, maxiter=300)),

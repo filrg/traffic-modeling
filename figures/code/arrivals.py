@@ -11,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C
 from _common import plt
 
-
 # --- occupancy --------------------------------------------------------
 
 
@@ -24,7 +23,7 @@ def _collect() -> tuple:
     st = C.state()
     counts = st["counts"].values
     model, cal = C.winner(st)
-    from seren_countfirst.metrics import base_marginals
+    from traffic_modeling.counts.metrics import base_marginals
 
     tm = base_marginals(counts)
     keys = ("mean", "IDC_15m", "zero_frac", "acf_1h_lag1")
@@ -54,7 +53,7 @@ def _collect() -> tuple:
 def series() -> None:
     """The full real series beside a synthetic run of equal length."""
     trace_win, syn_win, target, picked_d, report, pick = _collect()
-    from seren_countfirst.metrics import base_marginals
+    from traffic_modeling.counts.metrics import base_marginals
 
     C.house_style()
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7.2, 3.8), sharex=True, sharey=True)
@@ -124,7 +123,7 @@ def series() -> None:
 
 def _stack(rows: list, name: str) -> None:
     """Draw one series per row on a shared scale, and write the csv twin."""
-    from seren_countfirst.metrics import base_marginals
+    from traffic_modeling.counts.metrics import base_marginals
 
     C.house_style()
     fig, axes = plt.subplots(len(rows), 1, figsize=(7.2, 5.4), sharex=True, sharey=True)
@@ -197,9 +196,9 @@ def series_all() -> None:
 
 
 def series_all_best() -> None:
-    """The same stack with each baseline at its most trace-like run instead.
+    """The same stack with each baseline at its most trace-like run.
 
-    The winner keeps its typical run, so the asymmetry runs against it.
+    The winner keeps its typical run.
     """
     _stack(_stacked_rows(best_baselines=True), "fig_series_all_best")
 
@@ -208,15 +207,14 @@ def series_all_best() -> None:
 
 
 IDC_N_PATHS = 200
-# the seven scales are a chosen set, not a continuum, so they are spaced evenly.
-# Hours throughout: days would put three decimals on the short end.
+# a chosen set of scales, not a continuum: spaced evenly and labelled in hours
 TICKS = {"15m": "0.25", "1h": "1", "6h": "6", "1d": "24", "2d": "48", "4d": "96", "7d": "168"}
 
 
 def idc_scale() -> None:
     """Index of dispersion against aggregation scale, trace against the field."""
-    from seren_countfirst.data import SCALES
-    from seren_countfirst.metrics import idc_curve
+    from traffic_modeling.counts.metrics import idc_curve
+    from traffic_modeling.counts.series import SCALES
 
     st = C.state()
     trace = idc_curve(st["counts"].values)
@@ -256,7 +254,7 @@ def idc_scale() -> None:
     ax.set_xticks(x)
     ax.set_xticklabels([TICKS[s] for s in SCALES])
     ax.set_xlim(x[0] - 0.25, x[-1] + 0.25)
-    # log y: the field spans three decades, and a linear axis collapses it
+    # log y: the series span several decades
     ax.set_yscale("log")
     ax.set_ylim(5, 7000)
     ax.set_xlabel("Aggregation window (h)")
@@ -285,7 +283,7 @@ LAGS = (1, 2, 4, 8, 24, 48, 96, 192, 384)
 
 def acf() -> None:
     """Count autocorrelation against lag, trace against the models."""
-    from seren_countfirst.metrics import acf as acf_of
+    from traffic_modeling.counts.metrics import acf as acf_of
 
     st = C.state()
     rows = {"Trace": acf_of(st["counts"].values, LAGS)}

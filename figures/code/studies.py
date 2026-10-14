@@ -171,8 +171,8 @@ def horizon() -> None:
     on T; the tau curve, the finite-T estimator bias and the extensive
     statistics do.
     """
-    from seren_countfirst.metrics import acf, idc
     from seren_countfirst.models.gated import _gamma0
+    from traffic_modeling.counts.metrics import acf, idc
 
     st = C.state()
     model, _ = C.winner(st)
@@ -274,13 +274,13 @@ def load_scaling() -> None:
     from scipy.optimize import brentq
     from scipy.stats import norm
 
-    from seren_countfirst.metrics import acf, idc
     from seren_countfirst.models.gated import (
         _base_acf,
         _gamma0,
         _second_moment_ratio,
         _zero_prob,
     )
+    from traffic_modeling.counts.metrics import acf, idc
 
     st = C.state()
     model, cal = C.winner(st)
@@ -406,7 +406,7 @@ def latent_frontier() -> None:
     Matching the dispersion confines (V, kappa) to one curve; this scans it for
     the largest zero fraction whose ACF ceiling still clears the target.
     """
-    from seren_countfirst.metrics import hourly_acf1_from_autocov
+    from traffic_modeling.counts.metrics import hourly_acf1_from_autocov
 
     # Gauss-Hermite nodes for the lognormal expectations
     z_nodes, w = np.polynomial.hermite_e.hermegauss(200)

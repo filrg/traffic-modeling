@@ -11,7 +11,6 @@ import zipfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_TARGETS = (
     "traffic_modeling",
@@ -48,7 +47,7 @@ def _source_checks() -> None:
 
 def _copy_build_tree(destination: Path) -> None:
     destination.mkdir()
-    for filename in ("pyproject.toml", "README.md"):
+    for filename in ("pyproject.toml", "README.md", "LICENSE", "LICENSE-DATA"):
         shutil.copy2(ROOT / filename, destination / filename)
     ignored = shutil.ignore_patterns("__pycache__", "*.pyc")
     for package in ("seren_countfirst", "traffic_modeling"):
@@ -60,11 +59,16 @@ def _assert_wheel_contract(wheel: Path) -> None:
         members = archive.namelist()
     required = ("seren_countfirst/__init__.py", "traffic_modeling/__init__.py")
     missing = [path for path in required if path not in members]
+    missing += [
+        name
+        for name in ("LICENSE", "LICENSE-DATA")
+        if not any(path.endswith(f".dist-info/licenses/{name}") for path in members)
+    ]
     if missing:
-        raise RuntimeError(f"wheel is missing packages: {missing}")
+        raise RuntimeError(f"wheel is missing: {missing}")
     private = [path for path in members if path.startswith("seren_countfirst/tests/")]
     if private:
-        raise RuntimeError("wheel contains internal seren_countfirst/tests")
+        raise RuntimeError(f"wheel contains internal tests: {private[:3]}")
 
 
 def _package_smoke() -> None:
@@ -138,15 +142,15 @@ main(["--plan", "workload"])
 
 
 def _tests(*, include_slow: bool) -> None:
-    tests = ROOT / "seren_countfirst" / "tests"
-    if not tests.is_dir():
+    suite = ROOT / "seren_countfirst" / "tests"
+    if not suite.is_dir():
         raise RuntimeError("internal tests are unavailable; run `quality.py source` instead")
     with tempfile.TemporaryDirectory(prefix="seren-pytest-") as temporary:
         command = [
             sys.executable,
             "-m",
             "pytest",
-            str(tests),
+            str(suite),
             "-q",
             "-p",
             "no:cacheprovider",

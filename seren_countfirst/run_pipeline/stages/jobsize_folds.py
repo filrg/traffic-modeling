@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 
 import pandas as pd
+
 from traffic_modeling.datasets import DatasetCapability
 
 from ...artifacts import write_csv
@@ -88,7 +89,6 @@ def stage_jobsize_folds(context: PipelineContext | None = None) -> None:
     win = table.loc[table["arm"] == "in_window", _SHOWN].mean()
     obs = table.loc[table["arm"] == "observed", _SHOWN].mean()
     summary = pd.DataFrame({"observed": obs, "in_window": win, "out_of_sample": oos})
-    # the transfer cost is the gap the fold design exists to measure
     summary["transfer_cost"] = summary["out_of_sample"] - summary["in_window"]
     print("\nmean over folds:")
     print(summary.round(4).to_string())

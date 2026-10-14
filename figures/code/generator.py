@@ -51,8 +51,8 @@ def _load_sweep() -> tuple:
     """
     if "load" in _CACHE:
         return _CACHE["load"]
-    from seren_countfirst.metrics import idc
     from seren_countfirst.models.gated import _second_moment_ratio
+    from traffic_modeling.counts.metrics import idc
 
     st = C.state()
     model, cal = C.winner(st)
@@ -124,11 +124,7 @@ def _load_axes(ax, ylabel: str) -> None:
 
 
 def load_arrivals() -> None:
-    """Arrivals scale linearly with the load factor.
-
-    Linearity is exact by construction, so this checks the implementation and
-    the count-to-job reconstruction rather than a statistical claim.
-    """
+    """Jobs generated against the load factor, with the linear reference."""
     df, _, _ = _load_sweep()
 
     C.house_style()
@@ -204,13 +200,13 @@ def _work_sweep() -> pd.DataFrame:
     """
     if "work" in _CACHE:
         return _CACHE["work"]
-    from seren_countfirst.data import ActivityScheme
     from seren_countfirst.jobsize import assign_work, read_two_part_jobsize
     from seren_countfirst.reconstruct import (
-        make_iid_mark_sampler,
         PatternTemplates,
+        make_iid_mark_sampler,
         reconstruct_events,
     )
+    from traffic_modeling.counts.series import ActivityScheme
 
     st = C.state()
     model, cal = C.winner(st)
@@ -288,11 +284,7 @@ def _work_sweep() -> pd.DataFrame:
 
 
 def load_work() -> None:
-    """Offered work against the load factor, the companion to `load-arrivals`.
-
-    The knob that moves arrivals linearly does not move work linearly, because
-    the size law reads bin activity and activity is what the knob changes.
-    """
+    """Offered work against the load factor, the companion to `load-arrivals`."""
     df = _work_sweep().sort_values("alpha")
 
     C.house_style()
@@ -473,7 +465,7 @@ def load_runs() -> None:
     The same realisation rather than another draw, and each panel is scaled by
     its own load, so a proportional response would draw four identical panels.
     """
-    from seren_countfirst.metrics import idc
+    from traffic_modeling.counts.metrics import idc
 
     st = C.state()
     model, cal = C.winner(st)
@@ -527,9 +519,7 @@ def load_runs() -> None:
 
     ens = []
     for a in RUN_ALPHAS:
-        # one stream per path index, so the load factors are compared on the same
-        # paths; a stream per alpha pairs only its first path and lets the rest
-        # carry a spurious trend across the sweep
+        # one stream per path index, so every load factor sees the same paths
         ep = [
             model.simulate(n_bins, np.random.default_rng(C.SEED + 2000 + i), alpha=cal * a)
             for i in range(N_PATHS_RUN_ENS)
@@ -574,7 +564,7 @@ def load_runs() -> None:
 
 def combined() -> None:
     """Two panels: dispersion against load, and realised rate against run length."""
-    from seren_countfirst.metrics import idc
+    from traffic_modeling.counts.metrics import idc
 
     st = C.state()
     model, cal = C.winner(st)

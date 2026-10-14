@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-
 import pandas as pd
 
+from traffic_modeling.counts.metrics import base_marginals, quiet_run_vs_geometric
+from traffic_modeling.counts.series import expanding_window_folds
+
 from ...artifacts import write_csv
-from ...data import expanding_window_folds
 from ...evaluation import ModelEvaluation, benchmark_table, evaluate_model
-from ...metrics import base_marginals, quiet_run_vs_geometric
 from ..config import FOLD_KWARGS, N_PATHS_EVAL, N_PATHS_FOLD
 from ..context import PipelineContext, resolve_context
 from ..model_registry import CANDIDATE_KEYS, model_spec
